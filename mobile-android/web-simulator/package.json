@@ -1,0 +1,10 @@
+{
+  "name": "obsidian-mobile-web-simulator",
+  "version": "1.0.0",
+  "description": "Obsidian Mobile App - Interactive UI Frontend & Simulator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {}
+}
