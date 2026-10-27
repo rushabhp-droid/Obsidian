@@ -140,6 +140,16 @@ class ApiContractTest extends IntegrationTest {
     }
 
     @Test
+    void agentShapesMatch() throws Exception {
+        JsonNode registered = json(post("/api/v1/agents").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"hostname\":\"contract-host\"}"));
+        JsonNode listed = json(get("/api/v1/agents")).get(0);
+
+        assertThat(keys(registered)).isEqualTo(types.fields("RegisteredAgent"));
+        assertThat(keys(listed)).isEqualTo(types.fields("EndpointAgent"));
+    }
+
+    @Test
     void reportAndBypassRequestBodiesUseTheDashboardFieldNames() {
         assertThat(types.fields("ReportRequest")).containsExactlyInAnyOrder("indicatorType", "indicatorValue", "threatCategory");
         assertThat(types.fields("BypassRequest")).containsExactlyInAnyOrder("indicatorType", "indicatorValue", "ttlMinutes");
