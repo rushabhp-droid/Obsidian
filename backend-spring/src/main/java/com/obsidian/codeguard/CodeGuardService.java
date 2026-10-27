@@ -24,7 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Code Guard scans ([P1], TODO.md Module 5). A push or pull request snapshot is scanned with gitleaks
+ * A push or pull request snapshot is scanned with gitleaks
  * and OSV-Scanner in a fresh temp dir (deleted afterwards) and gets a Check Run; a published release
  * has each asset's SHA-256 resolved through the shared VirusTotalClient (same cache, limiter, PENDING).
  * Findings land in code_findings and on the dashboard live feed.

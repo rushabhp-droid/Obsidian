@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 // Localhost fallback for the named tunnel: these paths belong to Spring, everything
-// else to Next.js. Keep the list identical to the cloudflared ingress (CLAUDE.md,
+// else to Next.js. Keep the list identical to the cloudflared ingress (AGENTS.md,
 // "Routing / origin"). beforeFiles so /login/webauthn and /login/oauth2 never reach
 // the Next.js /login page.
 const SPRING_PATHS = ["/api", "/ws", "/webauthn", "/login/webauthn", "/oauth2", "/login/oauth2"];

@@ -4,7 +4,7 @@
 
 When someone reports a phishing link from a phone, Obsidian blocks it on every machine in the organization in under a second.
 
-> **Status:** 24-hour hackathon project, in progress. The plan is in [`TODO.md`](TODO.md); the shared API/WebSocket contract is [`docs/protocol.md`](docs/protocol.md). See [Current status](#current-status) for what works today.
+> **Status:** hackathon project, in progress. See [Current status](#current-status) for the implementation snapshot, [`TODO.md`](TODO.md) for open work, and [`docs/protocol.md`](docs/protocol.md) for the shared API and WebSocket contract.
 
 ---
 
@@ -21,15 +21,13 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). A new tab requires sign-in after the last dashboard tab closes; reloading the same tab keeps the session. Field names are checked by `ApiContractTest`. |
 | Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
-| `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
+| `mobile-android/` | Android source is present (merged from PR #3), but the app has not been built or verified against the backend. The current source has a compile mismatch and API contract gaps; see [`TODO.md`](TODO.md). The clickable prototype is `docs/prototype/android.html`. |
 
 Tests: backend 256/256 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
-### What is left
-1. **Hour 8 milestone on real hardware:** run the daemon as root (no `--dry-run`), add a domain in the web editor and check that `curl` is blocked, then bypass and check that it works again.
-2. **Android app** (P0): biometric lock, notification listener (WhatsApp/SMS), scan and Report. See `docs/protocol.md`; report the link's domain as `DOMAIN` so daemons block it.
-3. **Demo setup:** named tunnel + domain, real Turnstile keys, `VT_API_KEY` and `scripts/prewarm-vt.sh`, Gmail OAuth client in Testing mode with test users.
-4. **[P1], only after the milestone:** TOTP, heuristic classifier, SIM change detection, `BypassExpiryJob`, TTL picker and audit log view, daemon ACK latency. (Code Guard is built.)
+### What is next
+
+The active P0 and gated P1 items are tracked in [`TODO.md`](TODO.md). The immediate goal is to verify real firewall enforcement and complete the Android-to-daemon report path.
 
 ---
 
@@ -156,8 +154,6 @@ obsidian/
 └── docker-compose.yml  # PostgreSQL + Redis
 ```
 
-The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-structure).
-
 ---
 
 ## Getting Started
@@ -188,7 +184,7 @@ Each module also logs to `.run/<module>.log`. In dry-run the daemon writes its s
 
 To stop, press Ctrl+C, or run `kill "$(cat .run/run.pid)"` from another terminal. The daemon stops first, so it removes its blocks, then the dashboard and the API. With `--prod`, Docker containers that the run started are stopped too; their data stays in the volumes.
 
-If a module crashes, the others are stopped and its log tail is printed. If Turnstile is on, or the demo seed isn't loaded, the agent can't register itself: register one on **Endpoint Security** and pass `--agent-token FILE`, or use `OBSIDIAN_ADMIN_EMAIL` / `OBSIDIAN_ADMIN_PASSWORD`. The Android app isn't built yet, so it isn't started; its prototype is `docs/prototype/android.html`.
+If a module crashes, the others are stopped and its log tail is printed. If Turnstile is on, or the demo seed isn't loaded, the agent can't register itself: register one on **Endpoint Security** and pass `--agent-token FILE`, or use `OBSIDIAN_ADMIN_EMAIL` / `OBSIDIAN_ADMIN_PASSWORD`. The runner does not start Android; the Android source and its integration gaps are tracked in [`TODO.md`](TODO.md).
 
 The sections below start the same pieces by hand.
 
@@ -232,7 +228,7 @@ What the data contains:
   - Priya's 2-hour personal bypass and Riley's personal spam block.
 - **The daemon:** after connecting, it blocks 2 IPs and 2 domains.
 
-`testsafebrowsing.appspot.com` is left unreported, so you can report it live (TODO.md §8). Fictional names use the reserved `.example` domain and TEST-NET IPs, so nothing real gets blocked.
+`testsafebrowsing.appspot.com` is left unreported, so you can report it live. Fictional names use the reserved `.example` domain and TEST-NET IPs, so nothing real gets blocked.
 
 This works with Turnstile on. `run` passes `TURNSTILE_SITE_KEY` from `.env` to the dashboard, and a `--prod` run rebuilds the dashboard when that key changes. A real Turnstile site key only works on the hostnames listed for its widget in the Cloudflare dashboard (Turnstile → your widget → Hostnames). Add `localhost` there to sign in at http://localhost:3000, or use Cloudflare's test keys locally.
 
@@ -245,7 +241,7 @@ This works with Turnstile on. `run` passes `TURNSTILE_SITE_KEY` from `.env` to t
 | Next.js dashboard | `web-dashboard/` | 3000 | Node.js 20+ |
 | Rust firewall daemon | `daemon-rust/` | none (connects out to `/ws/firewall`) | Rust stable, Linux, root for real enforcement |
 | Cloudflare tunnel (demo only) | `cloudflared/` | none | `cloudflared`, a domain in Cloudflare |
-| Android app | `mobile-android/` | n/a | Not built yet; open `docs/prototype/android.html` for the prototype |
+| Android app | `mobile-android/` | n/a | Android Studio/Gradle; source is present but not yet built or integration-tested |
 
 Open the dashboard at **http://localhost:3000**. Everything below `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` is proxied to Spring, so you never browse to :8080.
 
@@ -513,7 +509,7 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | `GET /api/v1/code/findings` | List Code Guard findings for the organization |
 | `POST /api/v1/code/findings/{id}/status` | Mark a finding as rotated or a false positive |
 
-The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
+The request and response payloads are in [`docs/protocol.md`](docs/protocol.md).
 
 ---
 

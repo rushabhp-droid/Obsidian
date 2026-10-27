@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Blacklist / whitelist editor, Report and Bypass (TODO.md §6). Scope comes from the caller's role. */
+/** Blacklist / whitelist editor, Report and Bypass. Scope comes from the caller's role. */
 @RestController
 @RequestMapping("/api/v1/rules")
 public class RuleController {

@@ -13,7 +13,7 @@ import { api, API_MODE, ApiError } from "@/lib/api";
 import { dateLongUtc, plural, relativeTime } from "@/lib/format";
 import type { CodeFinding, CodeFindingStatus, CodeFindingType, CodeSeverity } from "@/lib/types";
 
-// Code Guard [P1] (TODO.md Module 5). A leaked key is compromised once pushed: the page drives
+// A leaked key is compromised once pushed: the page drives
 // rotation and never shows the key. Only its SHA-256 fingerprint exists on the server.
 
 const typeLabel: Record<CodeFindingType, string> = {

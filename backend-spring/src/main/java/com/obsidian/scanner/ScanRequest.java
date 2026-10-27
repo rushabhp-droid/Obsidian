@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 /**
- * POST /api/v1/scan/unified (TODO.md §6). Saved contacts send URLs only;
+ * POST /api/v1/scan/unified. Saved contacts send URLs only;
  * mobile never sends file hashes. Limits are checked again in ScanService.
  */
 public record ScanRequest(

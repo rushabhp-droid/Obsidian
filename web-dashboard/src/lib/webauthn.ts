@@ -1,5 +1,5 @@
-// Passkeys through Spring Security's built-in WebAuthn endpoints (TODO.md §3
-// lib/webauthn.ts). Mirrors the JSON contract of Spring's own webauthn script:
+// Passkeys through Spring Security's built-in WebAuthn endpoints. Mirrors the
+// JSON contract of Spring's own webauthn script:
 // options come back base64url-encoded and credentials go back the same way.
 
 import { API_MODE, csrfHeaders } from "./api";

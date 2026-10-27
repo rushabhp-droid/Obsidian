@@ -7,7 +7,7 @@ import com.obsidian.scanner.HeaderAuthValidator.AuthResults;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Only the topmost Authentication-Results header, and only when mx.google.com wrote it (CLAUDE.md). */
+/** Only the topmost Authentication-Results header from mx.google.com is trusted. */
 class HeaderAuthValidatorTest {
 
     static final String GOOGLE_PASS = "mx.google.com; dkim=pass header.i=@github.com; "

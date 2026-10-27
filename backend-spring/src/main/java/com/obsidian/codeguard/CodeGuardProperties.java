@@ -9,7 +9,7 @@ public record CodeGuardProperties(
         String appId,
         String privateKeyPath,
         String webhookSecret,
-        /** Admin of the organization that owns this GitHub App's findings (one App per org, TODO.md Module 5). */
+        /** Admin of the organization that owns this GitHub App's findings (one App per organization). */
         String orgAdminEmail,
         String apiUrl,
         String gitleaks,

@@ -13,7 +13,7 @@ import { isNetworkIndicator, normalizeIndicator, validateIndicator } from "@/lib
 import type { IndicatorType, ListType, ThreatCategory, ThreatRule } from "@/lib/types";
 import { ContextNotice, MetaList } from "./panel";
 
-/** TODO.md §6: enterprise user bypasses need a TTL. The TTL picker itself is [P1]. */
+/** Enterprise user bypasses need a TTL; the TTL picker is tracked as P1 in TODO.md. */
 export const ENTERPRISE_BYPASS_TTL_MINUTES = 15;
 
 export interface RuleChange {

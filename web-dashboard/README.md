@@ -35,16 +35,16 @@ mock mode, browser storage simulates the tab behavior; authentication itself is 
 | `/firewall` | Rules and policies | Blacklist / whitelist editor |
 | `/settings` | Integration settings | Connect Gmail, add a passkey |
 
-Not built yet: Authentication challenge (TOTP, [P1]), Audit log and record detail ([P1]) and the Code Guard
-screens ([P1]). The other Figma frames (binary and artifact analysis, investigations, reports, notifications,
+Not built yet: Authentication challenge (TOTP, [P1]) and Audit log and record detail ([P1]). Code Guard
+screens are implemented for admins. The other Figma frames (binary and artifact analysis, investigations, reports, notifications,
 users and roles, organization settings, endpoint detail, destination review, messaging security, the privacy
-policy and the compact views) are not in `TODO.md`.
+policy and the compact views) are outside the current implementation scope.
 
 ## API contract
 
 Types live in `src/lib/types.ts` and follow [`docs/protocol.md`](../docs/protocol.md), which wins; change both
 together. `backend-spring`'s `ApiContractTest` reads `types.ts` and fails when a response drifts from it.
-Besides the TODO.md §6 endpoints, the pages use these reads, all implemented in Spring:
+Besides the endpoints in [`docs/protocol.md`](../docs/protocol.md), the pages use these reads, all implemented in Spring:
 
 | Endpoint | Used by |
 | --- | --- |

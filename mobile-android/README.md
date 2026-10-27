@@ -1,7 +1,7 @@
 # Obsidian Mobile - Cybersecurity App
 
 **Real-Time Threat Defense for Android & Mobile**
-Built according to the Obsidian Hackathon Master Plan (`TODO.md`) and designed to match the Google Stitch Design System (`projects/6036591480365689582`).
+Designed to match the Google Stitch Design System (`projects/6036591480365689582`). API shapes follow [`../docs/protocol.md`](../docs/protocol.md); backend integration work is tracked in [`../TODO.md`](../TODO.md).
 
 ---
 
@@ -61,7 +61,7 @@ This application adheres strictly to the **Obsidian Android (Final)** design sys
 - Uses a bounded deduplication cache to handle duplicate notification posts.
 
 ### 4. Rule Precedence (`ThreatScanner.kt`)
-Matches the Master Plan rule precedence:
+Local rule precedence:
 1. Local Whitelist (Trusted rules that haven't expired)
 2. Local Blacklist (Blocked rules)
 3. Backend `/api/v1/scan/unified` + VirusTotal API v3 + Heuristic Intelligence
@@ -73,7 +73,7 @@ Matches the Master Plan rule precedence:
 ### Option A: Interactive Web Simulator (Instant Preview)
 A zero-dependency HTTP server and frontend simulator is provided to test the app right now in your browser:
 ```bash
-cd /home/nghate/.gemini/antigravity/scratch/obsidian-mobile/web-simulator
+cd mobile-android/web-simulator
 node server.js
 ```
 Open **`http://localhost:3300`** in any browser. The simulator includes:
@@ -87,9 +87,9 @@ Open **`http://localhost:3300`** in any browser. The simulator includes:
   * Biometric Fingerprint lock/unlock trigger
 
 ### Option B: Android Studio / Gradle
-Open the project in Android Studio or build with Gradle:
+Open `mobile-android/` in Android Studio. There is no Gradle wrapper yet; a compatible Gradle 8.x installation can build it with:
 ```bash
-cd /home/nghate/.gemini/antigravity/scratch/obsidian-mobile
-./gradlew assembleDebug
+cd mobile-android
+gradle assembleDebug
 ```
-Deploy the APK to an Android 8.0+ (API 26+) phone or emulator. Grant the **Notification Listener** permission when prompted to enable live WhatsApp and SMS interception.
+The Android project has not been built or integration-tested yet; see the P0 items in [`../TODO.md`](../TODO.md). Deploy a verified APK to an Android 8.0+ (API 26+) phone or emulator. Grant **Notification Listener** permission to enable live WhatsApp and SMS interception.

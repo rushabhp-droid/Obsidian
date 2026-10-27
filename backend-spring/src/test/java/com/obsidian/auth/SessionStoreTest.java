@@ -14,7 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** TODO.md §4.C: web sessions live in Redis at spring:session:sessions:<id> with a one-hour TTL. */
+/** Web sessions live in Redis at spring:session:sessions:<id> with a one-hour TTL. */
 @AutoConfigureMockMvc
 class SessionStoreTest extends IntegrationTest {
 

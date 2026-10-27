@@ -2,7 +2,7 @@ import { AppSidebar } from "@/components/shell/app-sidebar";
 import { ContextHeader } from "@/components/shell/context-header";
 import { LiveProvider } from "@/components/shell/live-provider";
 
-// Sidebar + auth guard (TODO.md §3). middleware.ts redirects requests without a
+// Sidebar + auth guard. middleware.ts redirects requests without a
 // session cookie; LiveProvider sends a 401 from /api/v1/auth/me back to /login.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (

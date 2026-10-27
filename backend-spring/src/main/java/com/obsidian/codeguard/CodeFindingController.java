@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Code Guard findings for SOC admins (TODO.md §6, [P1]). */
+/** Code Guard findings for SOC admins. */
 @RestController
 @RequestMapping("/api/v1/code/findings")
 public class CodeFindingController {

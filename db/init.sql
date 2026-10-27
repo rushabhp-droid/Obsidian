@@ -1,4 +1,4 @@
--- Obsidian schema (TODO.md §4). Hibernate runs with ddl-auto=validate, so the
+-- Obsidian schema. Hibernate runs with ddl-auto=validate, so the
 -- JPA entities in backend-spring/model must match this file exactly.
 -- Runs once, when the Postgres volume is empty (docker-entrypoint-initdb.d).
 

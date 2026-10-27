@@ -1,4 +1,4 @@
-// Fetch wrapper for /api/v1 (TODO.md §3 lib/api.ts). Requests stay same-origin:
+// Fetch wrapper for /api/v1. Requests stay same-origin:
 // the tunnel, or next.config.ts rewrites on localhost, route /api to Spring and the
 // __Host-session cookie rides along. Until Spring is up, NEXT_PUBLIC_API_MODE
 // defaults to "mock" and every call is served by mock-store.ts.
@@ -74,7 +74,7 @@ const post = <T>(path: string, body?: unknown, headers?: HeadersInit) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body), headers });
 
 const live = {
-  // TODO.md §6
+  // Auth and rule mutation requests follow docs/protocol.md.
   login: (email: string, password: string, turnstileToken: string | null) =>
     post<void>("/api/v1/auth/login", { email, password, turnstileToken }),
   listRules: () => get<ThreatRule[]>("/api/v1/rules"),
@@ -82,7 +82,7 @@ const live = {
   bypass: (req: BypassRequest) => post<ThreatRule>("/api/v1/rules/bypass", req),
   registerAgent: (hostname: string) => post<RegisteredAgent>("/api/v1/agents", { hostname }),
 
-  // Read endpoints the pages need that TODO.md §6 doesn't list yet.
+  // Read endpoints used by the dashboard pages.
   session: () => get<SessionInfo>("/api/v1/auth/me"),
   logout: () => post<void>("/api/v1/auth/logout"),
   listScans: () => get<ScanLog[]>("/api/v1/scans"),

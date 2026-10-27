@@ -1,8 +1,8 @@
 # Obsidian protocol
 
 The contract between Spring (`backend-spring`), the Rust daemon (`daemon-rust`), the web dashboard
-(`web-dashboard`) and the Android app (`mobile-android`). Field names follow the `TODO.md` §6 API table.
-If you change a shape here, change every consumer in the same commit (`CLAUDE.md`, "Contracts").
+(`web-dashboard`) and the Android app (`mobile-android`). This file is the source of truth for shared HTTP, scan, and WebSocket message shapes.
+If a shape changes, update every consumer and its contract tests in the same change. Shared workflow rules are in [`AGENTS.md`](../AGENTS.md).
 
 - All JSON. Timestamps are ISO 8601 UTC strings (`2026-10-27T10:15:00Z`). IDs are UUID strings.
 - Absent values are `null`, not omitted.

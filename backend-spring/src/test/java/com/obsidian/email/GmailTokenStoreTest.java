@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Gmail refresh tokens are encrypted at rest with pgp_sym_encrypt and the app key (CLAUDE.md "Secrets"). */
+/** Gmail refresh tokens are encrypted at rest with pgp_sym_encrypt and the app key. */
 class GmailTokenStoreTest extends IntegrationTest {
 
     @Autowired GmailTokenStore store;

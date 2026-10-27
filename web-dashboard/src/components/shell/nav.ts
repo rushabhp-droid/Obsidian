@@ -1,6 +1,5 @@
-// Only built pages appear here. Messaging Security, Binary Analysis, Reports and
-// Audit Log from the Figma navigation are P1 or not in TODO.md; add Audit Log when
-// its P1 page lands. Code Guard is P1 and built.
+// Only implemented pages appear here. Audit Log is tracked as gated P1 work;
+// Code Guard is implemented and remains available to admins.
 
 export interface NavItem {
   href: string;

@@ -25,7 +25,7 @@ export interface ThreatRule {
   threatCategory: ThreatCategory;
   source: RuleSource;
   confidenceScore: number;
-  /** TTL bypass lives only here (CLAUDE.md). */
+  /** TTL bypass lives only here. */
   expiresAt: string | null;
   updatedAt: string;
 }
@@ -147,6 +147,6 @@ export interface ReportRequest {
 export interface BypassRequest {
   indicatorType: IndicatorType;
   indicatorValue: string;
-  /** Required for enterprise users (TODO.md §6); the TTL UI itself is [P1]. */
+  /** Required for enterprise users; the TTL picker is tracked as P1 in TODO.md. */
   ttlMinutes?: number;
 }

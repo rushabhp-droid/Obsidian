@@ -39,7 +39,7 @@ server:
   port: 8080
   servlet:
     session:
-      # Redis-backed web session (spring:session:sessions:*), TODO.md §4.C.
+      # Redis-backed web sessions use spring:session:sessions:* keys.
       timeout: 3600s
   error:
     include-message: never
@@ -78,7 +78,7 @@ obsidian:
     osv-scanner: osv-scanner
     tool-timeout: 120s
     max-archive-bytes: 209715200   # 200 MiB repository snapshot
-    max-asset-bytes: 104857600     # 100 MiB per release asset (TODO.md Module 5)
+    max-asset-bytes: 104857600     # 100 MiB per release asset
   email:
     # "Verified official" needs SPF + DKIM + DMARC pass AND the sender's domain
     # (or a parent of it) on this list, or whitelisted by a rule.

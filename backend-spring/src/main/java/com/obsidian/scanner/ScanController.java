@@ -25,7 +25,7 @@ public class ScanController {
         this.scanLogs = scanLogs;
     }
 
-    /** The single scan endpoint for every channel (TODO.md §6). */
+    /** The single scan endpoint for every channel; see docs/protocol.md. */
     @PostMapping("/scan/unified")
     public ScanResponse scan(Account account, @Valid @RequestBody ScanRequest request) {
         return scans.scan(account, request);

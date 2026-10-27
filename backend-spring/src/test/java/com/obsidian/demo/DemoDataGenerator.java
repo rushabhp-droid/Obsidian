@@ -119,7 +119,7 @@ public final class DemoDataGenerator {
         }
         out.append("""
 
-                ## Demo flow (TODO.md §8)
+                ## Demo flow
 
                 1. Sign in as Avery with a passkey: enroll one first under Settings → Add a passkey (it's bound to `RP_ID`).
                 2. Email Security: GitHub / Google alerts pass SPF+DKIM+DMARC and are verified official; the payroll

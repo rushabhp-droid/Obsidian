@@ -9,7 +9,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 
-/** VirusTotal free tier: 4 requests a minute, 500 a day (CLAUDE.md "Scanning"). */
+/** The limiter respects VirusTotal's free-tier limit of four requests per minute. */
 class VtRateLimiterTest {
 
     static final class MutableClock extends Clock {

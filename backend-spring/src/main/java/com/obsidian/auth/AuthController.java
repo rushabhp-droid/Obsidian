@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Password register/login (TODO.md §6). Web clients get the __Host-session
+ * Password register/login. Web clients get the __Host-session
  * cookie; MOBILE clients get a bearer token. Passkeys use Spring Security's
  * own /webauthn/* and /login/webauthn endpoints.
  */

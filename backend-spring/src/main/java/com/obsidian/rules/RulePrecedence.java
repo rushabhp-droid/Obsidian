@@ -11,7 +11,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 
 /**
- * The one place rule precedence lives (TODO.md §4.B). When several rules match
+ * The one place rule precedence lives. When several rules match
  * one indicator, the first match wins:
  * <ol>
  *   <li>org ADMIN_POLICY rule (either list): admins always win</li>

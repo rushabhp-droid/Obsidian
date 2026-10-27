@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 /**
  * Normalization and validation for every indicator type. The rules match
  * web-dashboard/src/lib/indicators.ts; values are lowercased before they are
- * stored or looked up (CLAUDE.md). Validation never resolves DNS.
+ * stored or looked up. Validation never resolves DNS.
  */
 public final class Indicators {
 

@@ -1,4 +1,4 @@
-// /ws/dashboard live feed client (TODO.md §3 lib/ws.ts). The session cookie
+// /ws/dashboard live feed client. The session cookie
 // authenticates the upgrade. Reconnects with capped backoff; in mock mode the
 // sample store plays the server's part.
 

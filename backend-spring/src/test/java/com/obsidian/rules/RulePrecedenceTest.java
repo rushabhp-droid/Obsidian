@@ -20,7 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** TODO.md §4.B: the first match wins, in this order. */
+/** Verifies that the first matching rule wins according to {@link RulePrecedence}. */
 class RulePrecedenceTest {
 
     static final Instant NOW = Instant.parse("2026-10-27T10:00:00Z");
