@@ -10,4 +10,5 @@
 - The app lock always has the PIN; fingerprint is optional on top. Store the PIN only as the PBKDF2 hash in `SessionStore` (encrypted preferences, no unencrypted fallback).
 - Do not log bearer tokens, codes, PINs or message text. The server address is set in the app (debug builds default to `http://10.0.2.2:8080`); cleartext HTTP is allowed only for local hosts (`res/xml/network_security_config.xml`).
 - Call the feature "SIM change detection." It is [P1] and not wired into the app.
-- Run Android checks with `JAVA_HOME` set to JDK 21 and `./gradlew assembleDebug testDebugUnitTest`; the wrapper's Gradle doesn't run on JDK 26+, and don't use a system Gradle 9.
+- Run Android checks with `scripts/build.sh android` (tests, then debug and release APKs in `../dist/`; it picks a JDK 17–23 and the SDK itself), or `./gradlew assembleDebug testDebugUnitTest` with `JAVA_HOME` set to JDK 21. The wrapper's Gradle doesn't run on JDK 24+; don't use a system Gradle 9.
+- Release signing and the release APK's starting server come only from environment variables (`OBSIDIAN_ANDROID_KEYSTORE*`, `OBSIDIAN_SERVER_URL`); never commit a keystore or its passwords.

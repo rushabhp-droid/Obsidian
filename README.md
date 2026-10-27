@@ -387,7 +387,8 @@ Gmail needs your own Google OAuth client. Without one, the backend has no client
 ### 6b. Android app (B2C)
 ```sh
 cd backend-spring && gradle bootTestRun          # API on :8080; sign-up codes are printed to this log
-cd mobile-android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew installDebug
+scripts/build.sh android                         # tests + dist/obsidian-android-debug.apk (and a release APK)
+adb install -r dist/obsidian-android-debug.apk
 ```
 The debug build talks to `http://10.0.2.2:8080`, which is your computer as seen from the Android emulator. On a phone, set the server on the sign-in screen (**Change**) to the public tunnel address; plain `http` only works for `10.0.2.2` and `localhost` (use `adb reverse tcp:8080 tcp:8080` for a USB phone). The seeded B2C account is `sam.ortiz@mail.example` with the demo password.
 
@@ -443,8 +444,8 @@ A finding never contains the secret, only its SHA-256 fingerprint. A pushed key 
 `scripts/build.sh` is the one build entry point. It runs each component's tests, builds release artifacts, and stops at the first failure with a non-zero exit code, so CI can use it as is.
 
 ```sh
-scripts/build.sh                  # test + build backend, daemon and web (about 2 minutes)
-scripts/build.sh backend daemon   # only the components you name: backend | daemon | web
+scripts/build.sh                  # test + build backend, daemon, web and (with an Android SDK) the APKs
+scripts/build.sh backend daemon   # only the components you name: backend | daemon | web | android
 scripts/build.sh --skip-tests     # build without running tests (combine with targets)
 scripts/build.sh test             # run every test suite, build nothing
 scripts/build.sh clean            # remove dist/, web-dashboard/.next, Gradle and Cargo outputs
@@ -459,6 +460,13 @@ What each target does:
 | `backend` | `gradle test`: 268 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
+| `android` | `./gradlew testDebugUnitTest` | `assembleDebug assembleRelease` → `dist/obsidian-android-debug.apk` and `dist/obsidian-android-release.apk` (or `-release-unsigned.apk` without a signing key) | Android SDK (`ANDROID_HOME`, `local.properties` or `~/Android/Sdk`), JDK 17–23 (found automatically) |
+
+Without an Android SDK, the default build and `test` skip the app with a note; `scripts/build.sh android` fails instead.
+The release APK starts on `OBSIDIAN_SERVER_URL` (blank: the user enters the address on the sign-in screen)
+and is signed when `OBSIDIAN_ANDROID_KEYSTORE`, `OBSIDIAN_ANDROID_KEYSTORE_PASSWORD` and
+`OBSIDIAN_ANDROID_KEY_ALIAS` are set (`OBSIDIAN_ANDROID_KEY_PASSWORD` defaults to the keystore password).
+Keep the keystore outside the repo. The debug APK always starts on `http://10.0.2.2:8080`.
 
 None of the tests need Docker, network services or API keys.
 

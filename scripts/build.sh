@@ -2,8 +2,8 @@
 # Builds, tests, packages and runs every component.
 #
 # Build
-#   scripts/build.sh                  all components, with tests
-#   scripts/build.sh backend daemon   only these (backend | daemon | web)
+#   scripts/build.sh                  all components, with tests (android only when an Android SDK is found)
+#   scripts/build.sh backend daemon   only these (backend | daemon | web | android)
 #   scripts/build.sh --skip-tests     package without running tests
 #   scripts/build.sh test             run every test suite, build nothing
 #   scripts/build.sh clean            remove dist/ and build outputs
@@ -30,6 +30,10 @@
 #   dist/obsidian-backend.jar   java -jar dist/obsidian-backend.jar   (reads .env or env vars)
 #   dist/daemon-rust            sudo dist/daemon-rust --token-file /etc/obsidian/agent.token
 #   web-dashboard/.next         cd web-dashboard && npm start          (production server on :3000)
+#   dist/obsidian-android-debug.apk     adb install dist/obsidian-android-debug.apk
+#                                       (starts on http://10.0.2.2:8080, the host as seen from the emulator)
+#   dist/obsidian-android-release.apk   signed with OBSIDIAN_ANDROID_KEYSTORE; without it the release APK is
+#                                       dist/obsidian-android-release-unsigned.apk (sign it before installing)
 #
 # Environment:
 #   JAVA_HOME             JDK 21–25 to use; otherwise one is looked for (JDK 26+ breaks Byte Buddy in tests)
@@ -39,6 +43,11 @@
 #   OBSIDIAN_ADMIN_EMAIL  admin whose organization `run` registers the local daemon in
 #                         (default: the dev seed's admin; with --demo, the official demo admin)
 #   NEXT_PUBLIC_TURNSTILE_SITE_KEY  dashboard's Turnstile site key; defaults to TURNSTILE_SITE_KEY in .env
+#   ANDROID_HOME          Android SDK; otherwise ANDROID_SDK_ROOT, mobile-android/local.properties, ~/Android/Sdk
+#   OBSIDIAN_SERVER_URL   server address the release APK starts with (e.g. https://obsidian.example.com);
+#                         blank: the user enters it on the sign-in screen
+#   OBSIDIAN_ANDROID_KEYSTORE, OBSIDIAN_ANDROID_KEYSTORE_PASSWORD, OBSIDIAN_ANDROID_KEY_ALIAS,
+#   OBSIDIAN_ANDROID_KEY_PASSWORD (defaults to the keystore password)   release signing key
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -63,19 +72,35 @@ while [ $# -gt 0 ]; do
     --demo) USE_DEMO=1 ;;
     --force) FORCE=1 ;;
     --agent-token) [ $# -ge 2 ] || { echo "--agent-token needs a file" >&2; exit 2; }; AGENT_TOKEN=$(realpath "$2"); shift ;;
-    backend | daemon | web | test | clean | run | demo) TARGETS+=("$1") ;;
+    backend | daemon | web | android | test | clean | run | demo) TARGETS+=("$1") ;;
     -h | --help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
 done
-[ ${#TARGETS[@]} -gt 0 ] || TARGETS=(backend daemon web)
-
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 fail() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "$1 is not installed ($2)"; }
 
 java_major() { "$1/bin/java" -version 2>&1 | sed -nE 's/.*version "([0-9]+).*/\1/p' | head -1; }
+
+# find_jdk MIN MAX: the first installed JDK in that range (default java, /usr/lib/jvm, SDKMAN, ~/.jdks,
+# Android Studio's bundled JDK).
+find_jdk() {
+  local min=$1 max=$2 candidate major
+  local system_java; system_java=$(command -v java 2>/dev/null || true)
+  for candidate in \
+      "${system_java:+$(dirname "$(dirname "$(readlink -f "$system_java")")")}" \
+      /usr/lib/jvm/* "$HOME"/.sdkman/candidates/java/* "$HOME"/.jdks/* /opt/android-studio/jbr; do
+    [ -n "$candidate" ] && [ -x "$candidate/bin/java" ] || continue
+    major=$(java_major "$candidate")
+    if [ -n "$major" ] && [ "$major" -ge "$min" ] && [ "$major" -le "$max" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
 pick_java() {
   if [ -n "${JAVA_HOME:-}" ]; then
@@ -85,20 +110,47 @@ pick_java() {
     [ "$major" -le 25 ] || echo "warning: JDK $major is newer than the test tooling supports; use JDK 21–25 if tests fail" >&2
     return
   fi
-  local candidate major
-  local system_java; system_java=$(command -v java 2>/dev/null || true)
-  for candidate in \
-      "${system_java:+$(dirname "$(dirname "$(readlink -f "$system_java")")")}" \
-      /usr/lib/jvm/* "$HOME"/.sdkman/candidates/java/* "$HOME"/.jdks/* /opt/android-studio/jbr; do
-    [ -n "$candidate" ] && [ -x "$candidate/bin/java" ] || continue
-    major=$(java_major "$candidate")
-    if [ -n "$major" ] && [ "$major" -ge 21 ] && [ "$major" -le 25 ]; then
-      export JAVA_HOME="$candidate"
-      return
-    fi
-  done
-  fail "no JDK 21–25 found; install one or set JAVA_HOME"
+  JAVA_HOME=$(find_jdk 21 25) || fail "no JDK 21–25 found; install one or set JAVA_HOME"
+  export JAVA_HOME
 }
+
+# The Android SDK: $ANDROID_HOME, $ANDROID_SDK_ROOT, sdk.dir in mobile-android/local.properties, or
+# ~/Android/Sdk (Android Studio's default). Prints nothing when none has a platforms/ directory.
+android_sdk() {
+  local sdk candidate
+  for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" \
+      "$(sed -n 's/^sdk\.dir=//p' "$ROOT/mobile-android/local.properties" 2>/dev/null | tail -1)" "$HOME/Android/Sdk"; do
+    if [ -n "$candidate" ] && [ -d "$candidate/platforms" ]; then sdk=$candidate; break; fi
+  done
+  printf '%s' "${sdk:-}"
+}
+
+# ANDROID_JDK: the JDK for the Android build. Its Gradle wrapper (8.10.2) runs on JDK 17–23, so
+# JAVA_HOME is used only when it is in that range.
+pick_android_java() {
+  local major=""
+  [ -n "${JAVA_HOME:-}" ] && major=$(java_major "$JAVA_HOME")
+  if [ -n "$major" ] && [ "$major" -ge 17 ] && [ "$major" -le 23 ]; then
+    ANDROID_JDK=$JAVA_HOME
+  else
+    ANDROID_JDK=$(find_jdk 17 23) || fail "the Android build needs JDK 17–23 (its Gradle can't run on newer ones); install JDK 21 or set JAVA_HOME"
+  fi
+}
+
+# gradle_android TASK...: the Android project's own wrapper, never a system Gradle 9.
+gradle_android() {
+  (cd "$ROOT/mobile-android" && JAVA_HOME="$ANDROID_JDK" ANDROID_HOME="$ANDROID_SDK" ./gradlew --console=plain -q "$@")
+}
+
+ANDROID_SDK=$(android_sdk)
+if [ ${#TARGETS[@]} -eq 0 ]; then
+  TARGETS=(backend daemon web)
+  if [ -n "$ANDROID_SDK" ]; then
+    TARGETS+=(android)
+  else
+    echo "note: no Android SDK found (set ANDROID_HOME), so the Android app is skipped" >&2
+  fi
+fi
 
 pick_gradle() {
   if [ -n "${GRADLE:-}" ]; then return; fi
@@ -129,6 +181,11 @@ web_test() {
   (cd "$ROOT/web-dashboard" && npx --no-install tsc --noEmit && npm run --silent lint)
 }
 
+android_test() {
+  step "android: unit tests"
+  gradle_android testDebugUnitTest
+}
+
 web_install() {
   if [ ! -d "$ROOT/web-dashboard/node_modules" ] \
       || [ "$ROOT/web-dashboard/package-lock.json" -nt "$ROOT/web-dashboard/node_modules/.package-lock.json" ]; then
@@ -153,6 +210,32 @@ build_daemon() {
   (cd "$ROOT/daemon-rust" && cargo build --release --quiet)
   mkdir -p "$DIST"
   cp "$ROOT/daemon-rust/target/release/daemon-rust" "$DIST/daemon-rust"
+}
+
+# Debug and release APKs → dist/. The release APK is signed when OBSIDIAN_ANDROID_KEYSTORE is set.
+build_android() {
+  [ -n "$ANDROID_SDK" ] || fail "no Android SDK found; set ANDROID_HOME (or sdk.dir in mobile-android/local.properties)"
+  pick_android_java
+  echo "using JDK $(java_major "$ANDROID_JDK") at $ANDROID_JDK, Android SDK at $ANDROID_SDK"
+  [ "$SKIP_TESTS" = 1 ] || android_test
+  local signing="unsigned (set OBSIDIAN_ANDROID_KEYSTORE to sign it)"
+  if [ -n "${OBSIDIAN_ANDROID_KEYSTORE:-}" ]; then
+    [ -f "$OBSIDIAN_ANDROID_KEYSTORE" ] || fail "OBSIDIAN_ANDROID_KEYSTORE=$OBSIDIAN_ANDROID_KEYSTORE doesn't exist"
+    [ -n "${OBSIDIAN_ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${OBSIDIAN_ANDROID_KEY_ALIAS:-}" ] \
+      || fail "signing needs OBSIDIAN_ANDROID_KEYSTORE_PASSWORD and OBSIDIAN_ANDROID_KEY_ALIAS too"
+    signing="signed with $(basename "$OBSIDIAN_ANDROID_KEYSTORE")"
+  fi
+  step "android: assembleDebug assembleRelease (release ${signing}, server ${OBSIDIAN_SERVER_URL:-set in the app})"
+  gradle_android assembleDebug assembleRelease
+  local out="$ROOT/mobile-android/app/build/outputs/apk"
+  mkdir -p "$DIST"
+  rm -f "$DIST"/obsidian-android-*.apk
+  cp "$out/debug/app-debug.apk" "$DIST/obsidian-android-debug.apk"
+  if [ -f "$out/release/app-release.apk" ] && [ -n "${OBSIDIAN_ANDROID_KEYSTORE:-}" ]; then
+    cp "$out/release/app-release.apk" "$DIST/obsidian-android-release.apk"
+  else
+    cp "$out/release/app-release-unsigned.apk" "$DIST/obsidian-android-release-unsigned.apk"
+  fi
 }
 
 # The Turnstile site key the dashboard needs: $NEXT_PUBLIC_TURNSTILE_SITE_KEY, else TURNSTILE_SITE_KEY
@@ -196,6 +279,10 @@ clean() {
   (cd "$ROOT/daemon-rust" && cargo clean --quiet) 2>/dev/null || true
   pick_java; pick_gradle
   (cd "$ROOT/backend-spring" && $GRADLE clean --console=plain -q) || true
+  if [ -n "$ANDROID_SDK" ]; then
+    pick_android_java
+    gradle_android clean || true
+  fi
 }
 
 # ---- run ------------------------------------------------------------------------
@@ -416,7 +503,7 @@ run_all() {
   else
     step "running — open http://localhost:3000 (sign in as avery.lin@aster.example / obsidian-demo-2026). Ctrl+C stops everything."
   fi
-  echo "the Android app isn't built yet; its prototype is docs/prototype/android.html"
+  echo "Android app: scripts/build.sh android, then adb install dist/obsidian-android-debug.apk (the emulator reaches this API at http://10.0.2.2:8080; for a USB phone run adb reverse tcp:8080 tcp:8080 and set the server to http://localhost:8080)"
   tail -n +1 -F "$RUN"/*.log 2>/dev/null | awk '
       /^==> .* <==$/ { name = $2; sub(/.*\//, "", name); sub(/\.log$/, "", name); next }
       /^tail: / || /^[[:space:]]*$/ { next }
@@ -444,7 +531,14 @@ for target in "${TARGETS[@]}"; do
     backend) build_backend ;;
     daemon) build_daemon ;;
     web) build_web ;;
-    test) pick_java; pick_gradle; backend_test; daemon_test; web_test ;;
+    android) build_android ;;
+    test)
+      pick_java; pick_gradle; backend_test; daemon_test; web_test
+      if [ -n "$ANDROID_SDK" ]; then
+        pick_android_java; android_test
+      else
+        echo "note: no Android SDK found (set ANDROID_HOME), so the Android tests are skipped" >&2
+      fi ;;
     demo) demo_generate ;;
     clean) clean ;;
   esac

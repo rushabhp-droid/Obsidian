@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Release builds (scripts/build.sh android): the server address the app starts with, and the
+// signing key. Without OBSIDIAN_ANDROID_KEYSTORE the release APK is unsigned.
+val releaseServerUrl = System.getenv("OBSIDIAN_SERVER_URL").orEmpty().trim().trimEnd('/')
+require(releaseServerUrl.isEmpty() || Regex("^https?://[A-Za-z0-9.:\\[\\]_-]+(/[A-Za-z0-9._~/-]*)?$").matches(releaseServerUrl)) {
+    "OBSIDIAN_SERVER_URL must be an http(s) URL such as https://obsidian.example.com"
+}
+val releaseKeystore = System.getenv("OBSIDIAN_ANDROID_KEYSTORE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.obsidian.mobile"
     compileSdk = 35
@@ -19,7 +27,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // The B2C API origin until the user changes it in Settings (or on the sign-in screen).
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"\"")
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$releaseServerUrl\"")
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("OBSIDIAN_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("OBSIDIAN_ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("OBSIDIAN_ANDROID_KEY_PASSWORD")
+                    ?: System.getenv("OBSIDIAN_ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -29,10 +49,7 @@ android {
         }
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {

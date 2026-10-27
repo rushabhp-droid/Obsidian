@@ -30,3 +30,7 @@ dist/
 .run/
 # Official demo credentials and seed (scripts/build.sh demo): never commit
 /demo/
+
+# Android signing keys (scripts/build.sh android reads them from OBSIDIAN_ANDROID_KEYSTORE)
+*.jks
+*.keystore
