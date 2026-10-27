@@ -30,7 +30,7 @@ If a request touches a [P1] or [ROADMAP] item, say which tag it has before you i
 | `docker-compose.yml` | Postgres 16 + Redis 7 | |
 | `cloudflared/`, `scripts/` | Named tunnel config; seed / VT prewarm / reset scripts | |
 
-Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,audit,model}`. Header and attachment analysis belongs in `scanner/`, not `email/`. `email/` only does OAuth and polling and passes raw messages to `ScanService`.
+Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,codeguard,audit,model}`. Header and attachment analysis belongs in `scanner/`, not `email/`. `email/` only does OAuth and polling and passes raw messages to `ScanService`.
 
 ## Cross-cutting invariants
 
@@ -74,8 +74,15 @@ Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,
 - Notifications don't carry attachments, so mobile never sends file hashes.
 - Call the feature "SIM change detection", never "anti-SIM-swap".
 
+**Code Guard** ([P1], `TODO.md` Module 5; build only after the hour 8 milestone)
+- Verify `X-Hub-Signature-256` with a constant-time compare before parsing any webhook body. Return 202, then scan asynchronously.
+- Run gitleaks / osv-scanner through `ProcessBuilder` with an argument list and a timeout, never a shell, in a fresh temp dir that is deleted afterwards.
+- Never store, log or display a detected secret's value. Store rule, `path:line` and a SHA-256 fingerprint only.
+- Release assets go through the existing `VirusTotalClient` (same cache, limiter and `PENDING` rule). Don't add a second VT client.
+- Never claim the bot "hides" or "secures" a leaked key. A leaked key is compromised; the product detects it and drives rotation.
+
 **Secrets**
-- All secrets come from env (`.env`, gitignored; `.env.example` lists the keys: `VT_API_KEY`, `GMAIL_CLIENT_ID/SECRET`, `APP_ENC_KEY`, Turnstile keys, `RP_ID`). Never commit `client_secret.json` or cloudflared credentials.
+- All secrets come from env (`.env`, gitignored; `.env.example` lists the keys: `VT_API_KEY`, `GMAIL_CLIENT_ID/SECRET`, `APP_ENC_KEY`, Turnstile keys, `RP_ID`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET`). Never commit the GitHub App private key `.pem`. Never commit `client_secret.json` or cloudflared credentials.
 - TOTP secrets and Gmail refresh tokens are encrypted at rest with `pgp_sym_encrypt` using the app key.
 
 ## Contracts
