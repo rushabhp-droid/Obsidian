@@ -5,16 +5,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.obsidian.mobile.auth.TokenStorage
 import com.obsidian.mobile.data.MessageCheckItem
 import com.obsidian.mobile.data.MessageRepository
 import com.obsidian.mobile.data.RuleRepository
+import com.obsidian.mobile.network.ApiClient
+import com.obsidian.mobile.network.AuthLoginRequest
+import com.obsidian.mobile.network.IndicatorType
+import com.obsidian.mobile.network.ListType
+import com.obsidian.mobile.network.ThreatCategory
 import com.obsidian.mobile.ui.components.NavTab
 import com.obsidian.mobile.ui.components.ObsidianBottomNavBar
 import com.obsidian.mobile.ui.screens.AddRuleDialog
@@ -27,6 +34,13 @@ import com.obsidian.mobile.ui.screens.ReportConfirmedScreen
 import com.obsidian.mobile.ui.screens.RulesScreen
 import com.obsidian.mobile.ui.screens.RulesTab
 import com.obsidian.mobile.ui.screens.SettingsScreen
+import kotlinx.coroutines.launch
+
+import androidx.compose.ui.platform.LocalContext
+import com.obsidian.mobile.UrlCheckActivity
+import com.obsidian.mobile.network.ThreatScanner
+import com.obsidian.mobile.notify.ThreatAlertManager
+import com.obsidian.mobile.ui.components.ManualCheckLinkDialog
 
 sealed class ScreenState {
     object Lock : ScreenState()
@@ -39,14 +53,32 @@ sealed class ScreenState {
 @Composable
 fun ObsidianApp(
     tokenStorage: TokenStorage,
+    apiClient: ApiClient = remember { ApiClient(tokenStorage) },
     messageRepository: MessageRepository = MessageRepository.instance,
     ruleRepository: RuleRepository = RuleRepository.instance,
+    isDefaultBrowser: Boolean = false,
+    onRequestDefaultBrowser: () -> Unit = {},
+    onRequestNotificationAccess: () -> Unit = {},
     onTriggerBiometric: (onSuccess: () -> Unit) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var isUnlocked by remember { mutableStateOf(!tokenStorage.isFingerprintLockEnabled) }
     var currentScreen by remember { mutableStateOf<ScreenState>(
         if (!isUnlocked) ScreenState.Lock else ScreenState.Main(NavTab.HOME)
     ) }
+
+    val threatAlertManager = remember { ThreatAlertManager(context) }
+    val threatScanner = remember {
+        ThreatScanner(
+            apiClient = apiClient,
+            messageRepository = messageRepository,
+            ruleRepository = ruleRepository,
+            threatAlertManager = threatAlertManager
+        )
+    }
+
+    var showManualCheckDialog by remember { mutableStateOf(false) }
 
     val messages by messageRepository.messages.collectAsState()
     val blockedRules by ruleRepository.blockedRules.collectAsState()
@@ -54,6 +86,44 @@ fun ObsidianApp(
 
     var showAddRuleDialog by remember { mutableStateOf(false) }
     var addRuleInitialTab by remember { mutableStateOf(RulesTab.BLOCKED) }
+
+    // Backend synchronization when app is unlocked / active
+    LaunchedEffect(isUnlocked) {
+        if (isUnlocked) {
+            // 1. Authenticate with backend if token is missing
+            if (tokenStorage.bearerToken == null) {
+                try {
+                    val loginRes = apiClient.service.login(
+                        AuthLoginRequest(
+                            email = tokenStorage.userEmail.ifBlank { "priya@example.com" },
+                            password = "password",
+                            client = "MOBILE"
+                        )
+                    )
+                    tokenStorage.bearerToken = loginRes.token
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 2. Fetch Session Info (/api/v1/auth/me)
+            try {
+                val session = apiClient.service.me()
+                tokenStorage.userEmail = session.email
+                session.displayName?.let { tokenStorage.userDisplayName = it }
+                tokenStorage.userRole = session.role
+                session.organization?.let { tokenStorage.organizationName = it.name }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 3. Sync rules from backend (/api/v1/rules)
+            ruleRepository.syncRules(apiClient)
+
+            // 4. Sync scans from backend (/api/v1/scans)
+            messageRepository.syncScans(apiClient)
+        }
+    }
 
     if (!isUnlocked) {
         LockScreen(
@@ -119,33 +189,28 @@ fun ObsidianApp(
                 is ScreenState.Main -> {
                     when (screen.tab) {
                         NavTab.HOME -> {
-                            if (!tokenStorage.isNotificationAccessGranted) {
-                                HomeSetupScreen(
-                                    onEnableNotificationClicked = {
-                                        tokenStorage.isNotificationAccessGranted = true
-                                    },
-                                    onLearnMoreClicked = {},
-                                    onAccountClicked = {
-                                        currentScreen = ScreenState.Main(NavTab.SETTINGS)
-                                    }
-                                )
-                            } else {
-                                HomeScreen(
-                                    messages = messages,
-                                    onMessageClick = { item ->
-                                        currentScreen = ScreenState.MessageDetail(item)
-                                    },
-                                    onSeeAllMessagesClick = {
-                                        currentScreen = ScreenState.Main(NavTab.MESSAGES)
-                                    },
-                                    onAccountClick = {
-                                        currentScreen = ScreenState.Main(NavTab.SETTINGS)
-                                    }
-                                )
-                            }
+                            HomeScreen(
+                                messages = messages,
+                                isProtectionActive = tokenStorage.isNotificationAccessGranted,
+                                onMessageClick = { item ->
+                                    currentScreen = ScreenState.MessageDetail(item)
+                                },
+                                onSeeAllMessagesClick = {
+                                    currentScreen = ScreenState.Main(NavTab.ACTIVITY)
+                                },
+                                onCheckLinkClick = {
+                                    showManualCheckDialog = true
+                                },
+                                onReviewAccessClick = {
+                                    onRequestNotificationAccess()
+                                },
+                                onNotificationBellClick = {
+                                    currentScreen = ScreenState.Main(NavTab.ACTIVITY)
+                                }
+                            )
                         }
 
-                        NavTab.MESSAGES -> {
+                        NavTab.ACTIVITY -> {
                             MessagesScreen(
                                 messages = messages,
                                 onMessageClick = { item ->
@@ -162,10 +227,8 @@ fun ObsidianApp(
                                     showAddRuleDialog = true
                                 },
                                 onDeleteRuleClick = { rule ->
-                                    if (rule.listType == com.obsidian.mobile.network.ListType.BLACKLIST) {
-                                        ruleRepository.removeBlockedRule(rule.id)
-                                    } else {
-                                        ruleRepository.removeTrustedRule(rule.id)
+                                    coroutineScope.launch {
+                                        ruleRepository.deleteRule(apiClient, rule)
                                     }
                                 }
                             )
@@ -174,10 +237,25 @@ fun ObsidianApp(
                         NavTab.SETTINGS -> {
                             SettingsScreen(
                                 userEmail = tokenStorage.userEmail,
+                                userDisplayName = tokenStorage.userDisplayName,
+                                organizationName = tokenStorage.organizationName,
+                                serverUrl = tokenStorage.serverUrl,
+                                onServerUrlChanged = { newUrl ->
+                                    apiClient.setCustomBaseUrl(newUrl)
+                                    coroutineScope.launch {
+                                        ruleRepository.syncRules(apiClient)
+                                        messageRepository.syncScans(apiClient)
+                                    }
+                                },
                                 isNotificationAccessOn = tokenStorage.isNotificationAccessGranted,
                                 onNotificationAccessChanged = { enabled ->
                                     tokenStorage.isNotificationAccessGranted = enabled
+                                    if (enabled) {
+                                        onRequestNotificationAccess()
+                                    }
                                 },
+                                isDefaultBrowser = isDefaultBrowser,
+                                onRequestDefaultBrowserClick = onRequestDefaultBrowser,
                                 isFingerprintLockOn = tokenStorage.isFingerprintLockEnabled,
                                 onFingerprintLockChanged = { enabled ->
                                     tokenStorage.isFingerprintLockEnabled = enabled
@@ -187,9 +265,16 @@ fun ObsidianApp(
                                     tokenStorage.isHighContrastBlackEnabled = enabled
                                 },
                                 onSignOutClick = {
-                                    tokenStorage.clear()
-                                    isUnlocked = false
-                                    currentScreen = ScreenState.Lock
+                                    coroutineScope.launch {
+                                        try {
+                                            apiClient.service.logout()
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                        tokenStorage.clear()
+                                        isUnlocked = false
+                                        currentScreen = ScreenState.Lock
+                                    }
                                 },
                                 onPrivacyPolicyClick = {},
                                 onLicensesClick = {}
@@ -206,21 +291,28 @@ fun ObsidianApp(
                         },
                         onReportClick = {
                             messageRepository.markReported(screen.message.id)
-                            ruleRepository.addBlockedRule(
-                                indicatorType = com.obsidian.mobile.network.IndicatorType.URL,
-                                value = screen.message.displayDomain,
-                                source = "Reported by you · Today"
-                            )
+                            coroutineScope.launch {
+                                ruleRepository.reportRule(
+                                    apiClient = apiClient,
+                                    indicatorType = IndicatorType.URL,
+                                    value = screen.message.displayDomain,
+                                    category = ThreatCategory.PHISHING,
+                                    source = "Reported by you · Today"
+                                )
+                            }
                             currentScreen = ScreenState.ReportConfirmed(screen.message)
                         },
                         onTrustClick = {
                             messageRepository.markTrusted(screen.message.id)
-                            ruleRepository.addTrustedRule(
-                                indicatorType = com.obsidian.mobile.network.IndicatorType.URL,
-                                value = screen.message.displayDomain,
-                                source = "Trusted by you · Today",
-                                ttlMinutes = 15
-                            )
+                            coroutineScope.launch {
+                                ruleRepository.bypassRule(
+                                    apiClient = apiClient,
+                                    indicatorType = IndicatorType.URL,
+                                    value = screen.message.displayDomain,
+                                    ttlMinutes = 15,
+                                    source = "Trusted by you · Today"
+                                )
+                            }
                             currentScreen = ScreenState.Main(NavTab.HOME)
                         }
                     )
@@ -234,6 +326,14 @@ fun ObsidianApp(
                         },
                         onUndoReportClick = {
                             messageRepository.undoReport(screen.message.id)
+                            coroutineScope.launch {
+                                ruleRepository.bypassRule(
+                                    apiClient = apiClient,
+                                    indicatorType = IndicatorType.URL,
+                                    value = screen.message.displayDomain,
+                                    source = "Trusted by you · Today"
+                                )
+                            }
                             currentScreen = ScreenState.MessageDetail(screen.message)
                         }
                     )
@@ -245,12 +345,35 @@ fun ObsidianApp(
                     initialTab = addRuleInitialTab,
                     onDismiss = { showAddRuleDialog = false },
                     onConfirm = { type, value, tab, ttl ->
-                        if (tab == RulesTab.BLOCKED) {
-                            ruleRepository.addBlockedRule(type, value)
-                        } else {
-                            ruleRepository.addTrustedRule(type, value, ttlMinutes = ttl)
+                        coroutineScope.launch {
+                            if (tab == RulesTab.BLOCKED) {
+                                ruleRepository.reportRule(
+                                    apiClient = apiClient,
+                                    indicatorType = type,
+                                    value = value
+                                )
+                            } else {
+                                ruleRepository.bypassRule(
+                                    apiClient = apiClient,
+                                    indicatorType = type,
+                                    value = value,
+                                    ttlMinutes = ttl
+                                )
+                            }
                         }
                         showAddRuleDialog = false
+                    }
+                )
+            }
+
+            if (showManualCheckDialog) {
+                ManualCheckLinkDialog(
+                    threatScanner = threatScanner,
+                    ruleRepository = ruleRepository,
+                    apiClient = apiClient,
+                    onDismiss = { showManualCheckDialog = false },
+                    onOpenUrl = { url ->
+                        UrlCheckActivity.openInExternalBrowser(context, url)
                     }
                 )
             }

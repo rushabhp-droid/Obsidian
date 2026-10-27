@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <!-- Left shard -->
+    <path
+        android:fillColor="#111827"
+        android:pathData="M11,31 L17,5 L23,25 L17,21 Z" />
+    <!-- Right shard -->
+    <path
+        android:fillColor="#111827"
+        android:pathData="M23,25 L25,5 L31,31 L23,25 Z" />
+</vector>

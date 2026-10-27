@@ -139,10 +139,10 @@ fun MessagesScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Messages",
+                    text = "Security activity",
                     fontSize = 22.sp,
                     lineHeight = 28.sp,
-                    fontWeight = FontWeight.Normal,
+                    fontWeight = FontWeight.SemiBold,
                     color = OnSurface
                 )
                 IconButton(onClick = { isSearchActive = true }) {

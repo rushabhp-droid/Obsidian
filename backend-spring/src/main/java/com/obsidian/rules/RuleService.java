@@ -183,6 +183,31 @@ public class RuleService {
         return rule;
     }
 
+    @Transactional
+    public void delete(Account actor, UUID id) {
+        Optional<ThreatRule> existing = jdbc.query("select " + COLUMNS + " from threat_rules where id = cast(? as uuid)", ROW, id)
+                .stream().findFirst();
+        if (existing.isEmpty()) {
+            return;
+        }
+        ThreatRule rule = existing.get();
+        if (!actor.isAdmin() && rule.getUserId() != null && !rule.getUserId().equals(actor.userId())) {
+            throw new InvalidRuleRequestException("Cannot delete rules belonging to other users.");
+        }
+        if (!actor.isAdmin() && rule.getUserId() == null) {
+            throw new InvalidRuleRequestException("Non-admins cannot delete organization or global rules.");
+        }
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("indicatorType", rule.getIndicatorType().name());
+        details.put("indicatorValue", rule.getIndicatorValue());
+        details.put("ruleId", rule.getId().toString());
+        details.put("deleted", true);
+        audit.record(AuditAction.RULE_EDIT, actor.orgId(), actor.userId(), null, details);
+
+        jdbc.update("delete from threat_rules where id = cast(? as uuid)", id);
+        events.publishEvent(new RuleChanged(rule, clock.instant()));
+    }
+
     private Optional<ThreatRule> adminPolicy(UUID orgId, IndicatorType type, String value) {
         Instant now = clock.instant();
         return repository.candidates(type, value, orgId, null).stream()

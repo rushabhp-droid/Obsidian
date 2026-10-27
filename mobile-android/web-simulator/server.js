@@ -27,6 +27,36 @@ let threatRules = [
   { id: 'tst-4', indicatorType: 'URL', indicatorValue: 'intranet.example.com', listType: 'WHITELIST', threatCategory: 'SAFE', source: 'USER_BYPASS', confidenceScore: 100, subtitle: 'Trusted by you · ', expiresAt: new Date(Date.now() + 15 * 60000).toISOString() }
 ];
 
+let scanLogs = [
+  {
+    id: 'scan-1',
+    channel: 'SMS',
+    sender: '+91 98200 11234',
+    indicatorChecked: 'https://secure-login-verify.co/auth',
+    verdict: 'MALICIOUS',
+    vtPositives: 14,
+    createdAt: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: 'scan-2',
+    channel: 'WHATSAPP',
+    sender: 'HDFC Alert',
+    indicatorChecked: 'https://kyc-update-portal.net/verify',
+    verdict: 'MALICIOUS',
+    vtPositives: 18,
+    createdAt: new Date(Date.now() - 7200000).toISOString()
+  },
+  {
+    id: 'scan-3',
+    channel: 'SMS',
+    sender: 'VK-ICICI',
+    indicatorChecked: 'https://bank.example.in/login',
+    verdict: 'CLEAN',
+    vtPositives: 0,
+    createdAt: new Date(Date.now() - 86400000).toISOString()
+  }
+];
+
 // Helper to parse JSON body
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -75,13 +105,39 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req);
       sendJson(res, 200, {
-        token: 'obsidian-token-' + Buffer.from(body.email || 'user').toString('hex'),
-        userEmail: body.email || 'priya@example.com',
-        role: 'EMPLOYEE'
+        token: 'obm_' + Buffer.from(body.email || 'priya@example.com').toString('hex'),
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString()
       });
     } catch (e) {
       sendJson(res, 400, { error: 'Invalid JSON request' });
     }
+    return;
+  }
+
+  // GET /api/v1/auth/me
+  if (pathname === '/api/v1/auth/me' && req.method === 'GET') {
+    sendJson(res, 200, {
+      email: 'priya@example.com',
+      displayName: 'Priya Sharma',
+      role: 'EMPLOYEE',
+      organization: {
+        id: 'org-aster-1',
+        name: 'Aster Capital',
+        policyAllowUserBypass: true
+      }
+    });
+    return;
+  }
+
+  // POST /api/v1/auth/logout
+  if (pathname === '/api/v1/auth/logout' && req.method === 'POST') {
+    sendJson(res, 200, { success: true });
+    return;
+  }
+
+  // GET /api/v1/scans
+  if (pathname === '/api/v1/scans' && req.method === 'GET') {
+    sendJson(res, 200, scanLogs);
     return;
   }
 
@@ -94,66 +150,49 @@ const server = http.createServer(async (req, res) => {
       const domain = primaryUrl.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
       const sender = (body.sender || '').toLowerCase();
 
+      const recordScan = (verdict, category, vtDetections, details) => {
+        scanLogs.unshift({
+          id: 'scan-' + Date.now(),
+          channel: body.channel || 'SMS',
+          sender: body.sender || 'Unknown',
+          indicatorChecked: primaryUrl || domain,
+          verdict: verdict,
+          vtPositives: vtDetections,
+          createdAt: new Date().toISOString()
+        });
+        sendJson(res, 200, {
+          verdict,
+          category,
+          vtDetections,
+          indicatorChecked: primaryUrl,
+          details
+        });
+      };
+
       // Rule Precedence:
       // 1. Whitelist match
       const whitelisted = threatRules.find(r => r.listType === 'WHITELIST' && (r.indicatorValue.toLowerCase() === domain || r.indicatorValue.toLowerCase() === primaryUrl));
       if (whitelisted) {
-        sendJson(res, 200, {
-          verdict: 'CLEAN',
-          category: 'SAFE',
-          vtDetections: 0,
-          indicatorChecked: primaryUrl,
-          details: 'Allowed by device whitelist policy'
-        });
+        recordScan('CLEAN', 'SAFE', 0, 'Allowed by device whitelist policy');
         return;
       }
 
       // 2. Blacklist match
       const blacklisted = threatRules.find(r => r.listType === 'BLACKLIST' && (r.indicatorValue.toLowerCase() === domain || r.indicatorValue.toLowerCase() === primaryUrl || r.indicatorValue.toLowerCase() === sender));
       if (blacklisted) {
-        sendJson(res, 200, {
-          verdict: 'MALICIOUS',
-          category: blacklisted.threatCategory || 'PHISHING',
-          vtDetections: 14,
-          indicatorChecked: primaryUrl,
-          details: 'Matched active blacklist rule'
-        });
+        recordScan('MALICIOUS', blacklisted.threatCategory || 'PHISHING', 14, 'Matched active blacklist rule');
         return;
       }
 
       // 3. VirusTotal & Heuristics simulation
       if (domain.includes('secure-login') || domain.includes('paypa1') || domain.includes('kyc-update') || domain.includes('free-recharge')) {
-        sendJson(res, 200, {
-          verdict: 'MALICIOUS',
-          category: 'PHISHING',
-          vtDetections: 14,
-          indicatorChecked: primaryUrl,
-          details: 'Flagged by 14 security vendors on VirusTotal v3'
-        });
+        recordScan('MALICIOUS', 'PHISHING', 14, 'Flagged by 14 security vendors on VirusTotal v3');
       } else if (domain.includes('bit.ly') || domain.includes('tinyurl') || domain.includes('is.gd')) {
-        sendJson(res, 200, {
-          verdict: 'SUSPICIOUS',
-          category: 'SPAM',
-          vtDetections: 2,
-          indicatorChecked: primaryUrl,
-          details: 'Shortened link hiding destination'
-        });
+        recordScan('SUSPICIOUS', 'SPAM', 2, 'Shortened link hiding destination');
       } else if (domain.includes('track-parcel-info.net')) {
-        sendJson(res, 200, {
-          verdict: 'PENDING',
-          category: 'SAFE',
-          vtDetections: 0,
-          indicatorChecked: primaryUrl,
-          details: 'Awaiting VirusTotal v3 analysis'
-        });
+        recordScan('PENDING', 'SAFE', 0, 'Awaiting VirusTotal v3 analysis');
       } else {
-        sendJson(res, 200, {
-          verdict: 'CLEAN',
-          category: 'SAFE',
-          vtDetections: 0,
-          indicatorChecked: primaryUrl,
-          details: 'Verified clean by threat intelligence cache'
-        });
+        recordScan('CLEAN', 'SAFE', 0, 'Verified clean by threat intelligence cache');
       }
     } catch (e) {
       sendJson(res, 400, { error: 'Invalid scan request' });

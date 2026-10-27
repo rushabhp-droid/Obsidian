@@ -40,6 +40,9 @@ import com.obsidian.mobile.theme.OnActiveIndicator
 import com.obsidian.mobile.theme.OnSurfaceVariant
 import com.obsidian.mobile.theme.OutlineVariant
 
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.outlined.ShowChart
+
 enum class NavTab(
     val route: String,
     val title: String,
@@ -47,9 +50,14 @@ enum class NavTab(
     val unselectedIcon: ImageVector
 ) {
     HOME("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    MESSAGES("messages", "Messages", Icons.Filled.Chat, Icons.Outlined.Chat),
-    RULES("rules", "Rules", Icons.Filled.Tune, Icons.Outlined.Tune),
-    SETTINGS("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
+    ACTIVITY("activity", "Activity", Icons.Filled.ShowChart, Icons.Outlined.ShowChart),
+    RULES("rules", "My Rules", Icons.Filled.Tune, Icons.Outlined.Tune),
+    SETTINGS("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings);
+
+    companion object {
+        // Alias for backward compatibility
+        val MESSAGES get() = ACTIVITY
+    }
 }
 
 @Composable
