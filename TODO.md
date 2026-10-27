@@ -183,6 +183,9 @@ CREATE TABLE users (
     gmail_refresh_token_enc BYTEA NULL,           -- pgp_sym_encrypt(refresh token, app key)
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Added while building: users.display_name, users.gmail_address and
+-- users.gmail_last_polled_at (dashboard SessionInfo / GmailConnection), and a
+-- scanned_emails table (Email security page, Gmail dedupe). db/init.sql has them.
 
 -- 3. WebAuthn / Passkey Credentials (FIDO2)
 -- Do NOT hand-roll this table. Spring Security WebAuthn uses its own
@@ -418,6 +421,9 @@ Build only after the hour 8 milestone passes. If it slips, cut this module and k
 | `POST /webauthn/authenticate/options`, `POST /login/webauthn` | Web | Spring Security built-in passkey login; creates Redis session and sets the `__Host-session` cookie. |
 | `POST /api/v1/auth/login` | Web / Mobile | Password login (+ TOTP step if enabled). Web gets the session cookie; mobile gets a bearer token. |
 | `POST /api/v1/scan/unified` | Mobile / Mail | `{ "channel": "SMS\|WHATSAPP\|EMAIL", "sender": "...", "isSavedContact": false, "text": "...", "urls": [...], "fileHashes": [...] }` $\longrightarrow$ Returns `{ "verdict": "MALICIOUS\|SUSPICIOUS\|CLEAN\|PENDING", "category": "PHISHING", "vtDetections": 14 }`. The single scan endpoint for all channels. |
+| `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` | Web / Mobile | Signed-in user (`SessionInfo`); ends the session or revokes the bearer token. |
+| `GET /api/v1/scans`, `GET /api/v1/emails` | Web | Recent scan verdicts; scanned Gmail messages with SPF/DKIM/DMARC, links, attachments. |
+| `GET /api/v1/integrations/gmail`, `POST …/gmail/disconnect`, `GET /api/v1/agents` | Web | Gmail connection status; agents with heartbeat. Full shapes in `docs/protocol.md`. |
 | `GET /api/v1/rules` | Web / Mobile | Lists active `BLACKLIST` and `WHITELIST` entries for the user/organization. |
 | `POST /api/v1/rules/report` | Web / Mobile | Upserts an unflagged email, sender, URL, or IP into `BLACKLIST` & broadcasts to Firewall. |
 | `POST /api/v1/rules/bypass` | Web / Mobile | Upserts an indicator into `WHITELIST` (optional `ttlMinutes`, required for enterprise users) & removes active Firewall block. |
@@ -437,44 +443,46 @@ Build only after the hour 8 milestone passes. If it slips, cut this module and k
 * **Dev 3 (Mobile Lead - Kotlin):** Android UI, Biometrics, Notification Listener, SIM detection [P1].
 * **Dev 4 (Frontend Lead - Next.js):** Login UI (Passkeys + Turnstile), SOC Dashboard, Email & Firewall Editor.
 
+**Progress (2026-10-27):** ticked items are built and covered by tests (backend 220, daemon 19). The daemon was verified end to end in `--dry-run` against the backend, not yet as root; the hour 8 milestone needs that real run and the Android app. `README.md` "Current status" has the detail.
+
 **Rest:** everyone takes one 2–3 h sleep slot, staggered in pairs between hours 9 and 15. Nobody sleeps during the hour 8 milestone or Phase 4.
 
 ### Phase 1: Foundation & Core Plumbing (Hours 00:00 – 04:00)
 * **All:**
-  * [ ] Initialize monorepo, `docker-compose up -d` (Postgres + Redis)
+  * [x] Initialize monorepo, `docker-compose up -d` (Postgres + Redis)
   * [ ] Named Cloudflare Tunnel + path ingress on your domain (or commit to the localhost fallback)
   * [ ] Get a VirusTotal API key; **check that every demo URL gets ≥ 3 detections** (including `testsafebrowsing.appspot.com`); keep a self-blacklisted domain as fallback
   * [ ] Gmail OAuth consent screen in Testing mode with all demo accounts as test users
 * **Dev 1:**
-  * [ ] Repo scaffolding: `.gitignore`, `.env.example`, `docs/protocol.md` (agree on WS + scan JSON as a team)
-  * [ ] `db/init.sql` (incl. Spring WebAuthn tables) + JPA entities, `ddl-auto=validate`
-  * [ ] `SecurityConfig.java` (Argon2id + `__Host-session` Redis cookies)
-  * [ ] `/api/v1/rules` CRUD with upsert + `RulePrecedence`
+  * [x] Repo scaffolding: `.gitignore`, `.env.example`, `docs/protocol.md` (agree on WS + scan JSON as a team)
+  * [x] `db/init.sql` (incl. Spring WebAuthn tables) + JPA entities, `ddl-auto=validate`
+  * [x] `SecurityConfig.java` (Argon2id + `__Host-session` Redis cookies)
+  * [x] `/api/v1/rules` CRUD with upsert + `RulePrecedence`
 * **Dev 2:**
-  * [ ] `/api/v1/scan/unified` with PostgreSQL lookup + Redis cache + **stubbed** VirusTotal client (fixed verdicts)
-  * [ ] `daemon-rust` skeleton: WebSocket connect + reconnect loop
+  * [x] `/api/v1/scan/unified` with PostgreSQL lookup + Redis cache + **stubbed** VirusTotal client (fixed verdicts)
+  * [x] `daemon-rust` skeleton: WebSocket connect + reconnect loop
 * **Dev 3:**
   * [ ] Jetpack Compose scaffold, bottom navigation, `BiometricPrompt` lock screen
   * [ ] Login screen + API client (bearer token)
 * **Dev 4:**
-  * [ ] Next.js shell (`shadcn/ui`), sidebar navigation
-  * [ ] Login page with Turnstile widget
-  * [ ] `/api` proxy config for localhost fallback
+  * [x] Next.js shell (`shadcn/ui`), sidebar navigation
+  * [x] Login page with Turnstile widget
+  * [x] `/api` proxy config for localhost fallback
 
 ### Phase 2: Walking Skeleton, End to End with Fakes (Hours 04:00 – 08:00)
 * **Dev 1:**
-  * [ ] `FirewallWebSocketHandler` + agent token auth + `SYNC` on connect
-  * [ ] `DashboardWebSocketHandler` (`/ws/dashboard`, session auth) relaying the same Redis events
-  * [ ] Publish to Redis on every rule mutation
+  * [x] `FirewallWebSocketHandler` + agent token auth + `SYNC` on connect
+  * [x] `DashboardWebSocketHandler` (`/ws/dashboard`, session auth) relaying the same Redis events
+  * [x] Publish to Redis on every rule mutation
 * **Dev 2:**
-  * [ ] Daemon handles `SYNC` / `BLOCK` / `BYPASS`
-  * [ ] `validate.rs` (IP/domain parsing, no shell)
-  * [ ] `/etc/hosts` atomic sinkhole + `OBSIDIAN` iptables chain + cleanup on exit
+  * [x] Daemon handles `SYNC` / `BLOCK` / `BYPASS`
+  * [x] `validate.rs` (IP/domain parsing, no shell)
+  * [x] `/etc/hosts` atomic sinkhole + `OBSIDIAN` iptables chain + cleanup on exit
 * **Dev 3:**
   * [ ] `NotificationListenerService` for WhatsApp + SMS (`MessagingStyle` parsing, dedupe)
   * [ ] Display-name contact lookup (`READ_CONTACTS`) + URL extraction → `/scan/unified`
 * **Dev 4:**
-  * [ ] Blacklist/Whitelist Editor wired to `/api/v1/rules` with Report/Bypass
+  * [x] Blacklist/Whitelist Editor wired to `/api/v1/rules` with Report/Bypass
 * **🚩 Hour 8 milestone (whole team checks this together):**
   * [ ] Add a domain in the web editor → daemon blocks `curl` to it on the laptop
   * [ ] Report a URL from the phone → same block happens
@@ -482,25 +490,25 @@ Build only after the hour 8 milestone passes. If it slips, cut this module and k
 
 ### Phase 3: Real Channels (Hours 08:00 – 14:00)
 * **Dev 1:**
-  * [ ] Spring Security WebAuthn passkeys (JDBC repositories) + Turnstile server-side verification
-  * [ ] Mobile password login → bearer token
-  * [ ] Gmail OAuth flow + polling worker, handing raw messages to `ScanService`
+  * [x] Spring Security WebAuthn passkeys (JDBC repositories) + Turnstile server-side verification
+  * [x] Mobile password login → bearer token
+  * [x] Gmail OAuth flow + polling worker, handing raw messages to `ScanService`
 * **Dev 2:**
-  * [ ] Real VirusTotal v3 client: GET + POST/poll for unknown URLs, 4 req/min limiter, quota fallback → `PENDING`
-  * [ ] `Authentication-Results` parser (topmost `mx.google.com` header only) + attachment SHA-256 hashing
+  * [x] Real VirusTotal v3 client: GET + POST/poll for unknown URLs, 4 req/min limiter, quota fallback → `PENDING`
+  * [x] `Authentication-Results` parser (topmost `mx.google.com` header only) + attachment SHA-256 hashing
 * **Dev 3:**
   * [ ] Threat cards with **Report** & **Bypass** buttons
   * [ ] High-priority alert notifications for malicious verdicts
 * **Dev 4:**
-  * [ ] Email Triage page: SPF/DKIM/DMARC badges, VirusTotal scores, 1-click **Bypass (Whitelist)** / **Report (Blacklist)**
-  * [ ] Live threat feed over `/ws/dashboard` + **"Rust Agent Connected"** heartbeat indicator in the navbar
+  * [x] Email Triage page: SPF/DKIM/DMARC badges, VirusTotal scores, 1-click **Bypass (Whitelist)** / **Report (Blacklist)**
+  * [x] Live threat feed over `/ws/dashboard` + **"Rust Agent Connected"** heartbeat indicator in the navbar
 
 ### Phase 4: Integration, Chaos Testing & P1 Features (Hours 14:00 – 18:00)
 * **All (first):**
   * [ ] Connect Android App and Next.js Webapp to the public tunnel URL
   * [ ] Full **Crowd-Immunity Loop**: Report a link on the Android app $\longrightarrow$ PostgreSQL update $\longrightarrow$ Next.js Firewall table updates $\longrightarrow$ Rust Daemon blocks `curl` on the laptop
-  * [ ] VirusTotal quota exhausted → cached/DB verdicts still work
-  * [ ] Kill the daemon, add rules, restart → `SYNC` applies the missed rules
+  * [x] VirusTotal quota exhausted → cached/DB verdicts still work
+  * [x] Kill the daemon, add rules, restart → `SYNC` applies the missed rules
   * [ ] Pre-warm `vt:cache:*` with every demo URL/hash
 * **P1, only if the above passes:**
   * [ ] Dev 1: TOTP MFA + QR enrollment

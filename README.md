@@ -12,25 +12,23 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 
 | Component | State |
 | --- | --- |
-| `db/init.sql`, `docker-compose.yml`, `.env.example` | Done. Schema = TODO.md §4 + Spring WebAuthn tables + `users.display_name/gmail_address/gmail_last_polled_at` + `scanned_emails`. |
-| `docs/protocol.md` | Done: REST, scan, `/ws/firewall`, `/ws/dashboard`, Redis keys. |
-| `backend-spring/` auth | Done: password login (Argon2id), passkeys (Spring WebAuthn, JDBC tables), `__Host-session` in Redis, CSRF cookie, mobile bearer tokens, Turnstile. |
-| `backend-spring/` rules | Done: `RulePrecedence`, `RuleService` (upsert → audit → Redis publish), `GET /rules`, `POST /rules/report`, `POST /rules/bypass`. |
-| `backend-spring/` scanner | Done: `POST /scan/unified`, `GET /scans`, VirusTotal v3 client (cache, 4/min limiter, submit + poll, `PENDING`). |
-| `backend-spring/` email analysis + Gmail | Done: topmost `mx.google.com` Authentication-Results parser, MIME links + attachment SHA-256, "verified official" allowlist, Gmail OAuth (encrypted refresh token), polling worker, `GET /emails`, `/integrations/gmail`. |
-| `backend-spring/` WebSockets + agents | Done: `/ws/firewall` (bearer handshake, SYNC on connect, BLOCK/BYPASS, HEARTBEAT), `/ws/dashboard` (session + origin check), Redis fan-out, `POST/GET /agents`. |
-| `web-dashboard/` | P0 screens on sample data. Field names checked against the backend by `ApiContractTest` (parses `types.ts`); match so far. Not yet run in `live` mode. |
-| `daemon-rust/` | Not started (P0). |
-| `mobile-android/` | Clickable prototype only (`docs/prototype/android.html`). |
-| `scripts/`, `cloudflared/` | Not started. |
+| Repo scaffolding | Done: `db/init.sql`, `docker-compose.yml`, `.env.example`, `docs/protocol.md` (the shared contract), `cloudflared/config.yml`, `scripts/` (seed, VirusTotal pre-warm, demo reset). |
+| `backend-spring/` auth | Done: Argon2id password login, passkeys (Spring WebAuthn, JDBC tables), `__Host-session` cookie in Redis, CSRF cookie, mobile bearer tokens, Turnstile. |
+| `backend-spring/` rules | Done: `RulePrecedence`; `RuleService` saves, audits and publishes every change; `GET /rules`, `POST /rules/report`, `POST /rules/bypass`. |
+| `backend-spring/` scanner | Done: `POST /scan/unified`, `GET /scans`, VirusTotal v3 (Redis cache, 4/min limiter, submit + poll, `PENDING`), topmost `mx.google.com` SPF/DKIM/DMARC, MIME links and attachment SHA-256. |
+| `backend-spring/` Gmail | Done: OAuth connect (encrypted refresh token), polling worker, `GET /emails`, `/integrations/gmail`. Not yet tried against a real Google account. |
+| `backend-spring/` WebSockets + agents | Done: `/ws/firewall` (bearer handshake, SYNC, BLOCK/BYPASS, HEARTBEAT), `/ws/dashboard`, Redis fan-out, `POST/GET /agents`. |
+| `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
+| `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). Field names are checked by `ApiContractTest`. |
+| `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
 
-Backend tests: 220/220 pass (`cd backend-spring && gradle test`), against embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed for tests.
+Tests: backend 220/220 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
-### What is left (P0, in order)
-1. Rust daemon (`daemon-rust/`) per TODO.md Module 4.
-2. No-Docker dev runtime, `scripts/seed.sql`, `prewarm-vt.sh`, `reset-demo.sh`, `cloudflared/config.yml`.
-3. Frontend: read problem-detail `detail` in `api.ts`, map 400 (Turnstile) in login, run in `live` mode.
-4. Hour 8 milestone check.
+### What is left
+1. **Hour 8 milestone on real hardware:** run the daemon as root (no `--dry-run`), add a domain in the web editor and check that `curl` is blocked, then bypass and check that it works again.
+2. **Android app** (P0): biometric lock, notification listener (WhatsApp/SMS), scan and Report. See `docs/protocol.md`; report the link's domain as `DOMAIN` so daemons block it.
+3. **Demo setup:** named tunnel + domain, real Turnstile keys, `VT_API_KEY` and `scripts/prewarm-vt.sh`, Gmail OAuth client in Testing mode with test users.
+4. **[P1], only after the milestone:** TOTP, heuristic classifier, SIM change detection, `BypassExpiryJob`, TTL picker and audit log view, daemon ACK latency, Code Guard.
 
 ---
 
@@ -141,7 +139,7 @@ flowchart LR
 
 ---
 
-## Repository Layout (planned)
+## Repository Layout
 
 ```text
 obsidian/
@@ -162,33 +160,38 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 
 ## Getting Started
 
-> These are the planned steps. They will be updated once the components land.
-
 ### Prerequisites
-- Docker and Docker Compose
-- JDK 21, Node.js 20+, a Rust stable toolchain, and Android Studio
-- A Linux machine for the daemon (it needs root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`)
-- A VirusTotal API key, a Google Cloud OAuth client (Gmail API), and Cloudflare Turnstile keys
-- *Optional, for Code Guard:* a GitHub App (Contents read, Checks write, Metadata read; events `push`, `pull_request`, `release`), plus `gitleaks` and `osv-scanner` on the server's `PATH`
-- *Optional:* a domain in Cloudflare for a named tunnel. Without one, use the `localhost` fallback.
+- JDK 21+ and Gradle (or `./gradlew`), Node.js 20+, a Rust stable toolchain, Android Studio
+- Docker and Docker Compose for the real stack. Tests and `gradle bootTestRun` don't need it.
+- A Linux machine for the daemon (root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`)
+- For the demo: a VirusTotal API key, a Google Cloud OAuth client (Gmail API), Cloudflare Turnstile keys, and a domain in Cloudflare for a named tunnel
 
 ### Configure
 ```sh
-cp .env.example .env
-# Fill in VT_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, APP_ENC_KEY,
-# TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY, RP_ID
-# Code Guard (optional): GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_WEBHOOK_SECRET
+cp .env.example .env    # fill in the keys; Spring reads ../.env, docker compose reads .env
 ```
 
-### Run
+### Run without Docker (development)
 ```sh
-docker compose up -d                                   # PostgreSQL + Redis
+cd backend-spring && gradle bootTestRun                       # :8080, embedded Postgres + Redis, demo seed
+cd web-dashboard  && npm install && NEXT_PUBLIC_API_MODE=live npm run dev   # :3000
+```
+Sign in as `avery.lin@aster.example` (admin), `priya.nair@aster.example` (employee) or `riley.chen@mail.example` (consumer); the password is `obsidian-demo-2026`. Data is lost when the backend stops.
 
-cd backend-spring && ./gradlew bootRun                 # API on :8080
-cd web-dashboard  && npm install && npm run dev        # Web on :3000
-cd daemon-rust    && cargo build --release \
-                  && sudo ./target/release/daemon-rust # Firewall agent
-cd mobile-android && ./gradlew installDebug            # Android app
+### Run the full stack
+```sh
+scripts/reset-demo.sh                                  # Postgres + Redis in Docker, schema + seed
+cd backend-spring && ./gradlew bootRun                 # :8080
+cd web-dashboard  && npm run dev                       # :3000 (NEXT_PUBLIC_API_MODE=live)
+VT_API_KEY=... scripts/prewarm-vt.sh                   # cache every demo URL / hash
+```
+
+### Enroll a daemon
+Register the host on the **Agents** page (or `POST /api/v1/agents`), save the token it shows once to a file readable only by root, then:
+```sh
+cd daemon-rust && cargo build --release
+sudo ./target/release/daemon-rust --server wss://obsidian.<your-domain>/ws/firewall --token-file /etc/obsidian/agent.token
+./target/release/daemon-rust --dry-run --token-file agent.token   # no root: prints iptables commands, temp hosts file
 ```
 
 ### Routing

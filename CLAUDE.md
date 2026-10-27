@@ -6,7 +6,7 @@ Obsidian is a 24-hour hackathon project: one threat-rule engine that covers emai
 
 ## Status
 
-`web-dashboard/` exists: the P0 screens from the Obsidian Figma file, on sample data until Spring is up (`NEXT_PUBLIC_API_MODE`, see `web-dashboard/README.md`). Everything else is still the plan (`README.md`, `TODO.md`). The layout below is the target from `TODO.md` §3. Create directories as you get to them. Don't scaffold every component up front.
+Built: `backend-spring/` (all P0 API, WebSocket and Gmail pieces), `daemon-rust/`, `web-dashboard/` (P0 screens, works in `live` mode), `db/`, `docs/protocol.md`, `scripts/`, `cloudflared/`. Not built: `mobile-android/` (prototype only) and every [P1] item. `README.md` "Current status" has the details and what is left.
 
 ## Scope discipline (most important rule)
 
@@ -91,15 +91,17 @@ Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,
 
 ## Commands
 
-These are the planned commands. Update this section when the real build files exist.
-
 ```sh
-docker compose up -d                     # Postgres + Redis (db/ mounted into initdb)
-cd backend-spring && ./gradlew bootRun   # :8080
-cd web-dashboard && npm run dev          # :3000
-cd daemon-rust && cargo build --release && sudo ./target/release/daemon-rust
-cd mobile-android && ./gradlew installDebug
+cd backend-spring && gradle test           # 220 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
+cd backend-spring && gradle bootTestRun    # :8080 with embedded Postgres/Redis and scripts/seed.sql
+docker compose up -d                       # real Postgres + Redis (db/ mounted into initdb); scripts/reset-demo.sh reseeds
+cd backend-spring && ./gradlew bootRun     # :8080 against docker compose
+cd web-dashboard && npm run dev            # :3000; NEXT_PUBLIC_API_MODE=live to use Spring
+cd daemon-rust && cargo test && cargo build --release && sudo ./target/release/daemon-rust --token-file /etc/obsidian/agent.token
+cd mobile-android && ./gradlew installDebug   # not built yet
 ```
+
+On a machine whose default JDK is newer than Byte Buddy supports (e.g. 27), run Gradle with `JAVA_HOME` pointing at JDK 21–25. Demo accounts in the seed use the password `obsidian-demo-2026`.
 
 ## Demo gotchas
 
