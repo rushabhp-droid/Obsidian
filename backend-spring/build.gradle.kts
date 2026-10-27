@@ -60,8 +60,8 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Mockito attaches its agent at runtime.
-    jvmArgs("-XX:+EnableDynamicAgentLoading")
+    // Mockito attaches its agent at runtime (and class-data sharing would warn about it).
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Xshare:off")
 }
 
 // `gradle bootTestRun`: the backend on :8080 with embedded Postgres + Redis (no Docker).

@@ -24,3 +24,6 @@ mobile-android/local.properties
 .vscode/
 .DS_Store
 .superpowers/
+
+# scripts/build.sh output
+dist/

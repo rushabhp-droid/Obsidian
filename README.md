@@ -290,12 +290,23 @@ Phones and daemons on other machines use `https://obsidian.<your-domain>` and `w
 
 > Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
 
-### 8. Run the tests
+### 8. Build and test everything
 ```sh
-cd backend-spring && gradle test         # embedded PostgreSQL + in-process Redis; no Docker
-cd daemon-rust && cargo test
-cd web-dashboard && npx tsc --noEmit && npm run lint
+scripts/build.sh                  # test + package all components into dist/ (about 2 minutes)
+scripts/build.sh backend daemon   # only some components (backend | daemon | web)
+scripts/build.sh --skip-tests     # package without running tests
+scripts/build.sh test             # every test suite, build nothing
+scripts/build.sh clean            # remove dist/ and build outputs
 ```
+It picks a JDK 21–25 by itself (or honours `JAVA_HOME`), uses `./gradlew` or a matching system Gradle, and runs `npm ci` when `node_modules` is stale. Outputs:
+
+| Artifact | Run it with |
+| --- | --- |
+| `dist/obsidian-backend.jar` | `java -jar dist/obsidian-backend.jar` (reads `.env` from the current or parent directory, or env vars) |
+| `dist/daemon-rust` | `sudo dist/daemon-rust --token-file /etc/obsidian/agent.token` (Linux x86-64, glibc) |
+| `web-dashboard/.next` | `cd web-dashboard && npm start` (production server on :3000; `NEXT_PUBLIC_API_MODE` is baked in at build time, default `live`) |
+
+The suites on their own: `cd backend-spring && gradle test` (embedded PostgreSQL + in-process Redis, no Docker), `cd daemon-rust && cargo test`, `cd web-dashboard && npx tsc --noEmit && npm run lint`.
 
 ### Routing
 The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` go to Spring (`:8080`), and everything else goes to Next.js (`:3000`). This is set up in `cloudflared/config.yml`, or in `next.config.ts` rewrites in localhost mode. The rewrites proxy WebSocket upgrades too.
