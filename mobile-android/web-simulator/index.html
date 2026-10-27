@@ -535,6 +535,24 @@
 
           <div class="h-[1px] bg-[#DAE4E5] my-2"></div>
 
+          <!-- Backend Service Section -->
+          <div class="py-2">
+            <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">Backend Service</span>
+            
+            <div id="btn-server-url" class="flex items-center justify-between py-3 px-1 cursor-pointer hover:bg-[#00696D]/5 rounded">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">dns</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">Control Plane Server</div>
+                  <div class="font-mono text-xs text-[#3F4849]" id="settings-server-url">http://localhost:8080</div>
+                </div>
+              </div>
+              <span class="material-symbols-outlined text-[#3F4849] text-base">edit</span>
+            </div>
+          </div>
+
+          <div class="h-[1px] bg-[#DAE4E5] my-2"></div>
+
           <!-- Appearance Section -->
           <div class="py-2">
             <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">Appearance</span>
@@ -573,8 +591,8 @@
               <div class="flex items-start gap-3">
                 <span class="material-symbols-outlined text-[#3F4849] mt-0.5">account_circle</span>
                 <div>
-                  <div class="text-sm font-normal text-[#191C1D]">priya@example.com</div>
-                  <div class="text-xs text-[#3F4849]">Signed in · Employee Tier</div>
+                  <div class="text-sm font-normal text-[#191C1D]" id="settings-user-name">Priya Sharma</div>
+                  <div class="text-xs text-[#3F4849]" id="settings-user-sub">priya@example.com · Aster Capital</div>
                 </div>
               </div>
             </div>
@@ -801,6 +819,19 @@
       <div class="flex justify-end gap-2 pt-2">
         <button id="modal-btn-cancel" class="m3-btn px-4 py-2 text-sm text-[#3F4849] hover:bg-[#00696D]/10">Cancel</button>
         <button id="modal-btn-save" class="m3-btn px-4 py-2 text-sm bg-[#00696D] text-white font-medium hover:bg-[#00575a]">Add Rule</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server URL Modal Dialog -->
+  <div id="server-url-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#FAFDFD] rounded-[12px] p-6 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-[#DAE4E5]">
+      <h3 class="text-lg font-medium text-[#191C1D]">Control Plane Server</h3>
+      <p class="text-xs text-[#3F4849]">Enter Spring Boot backend or tunnel URL (e.g. http://localhost:8080):</p>
+      <input type="text" id="modal-server-input" value="http://localhost:8080" class="w-full px-3 py-2 text-sm font-mono border border-[#6F7979] rounded-[4px] bg-[#E0E3E3] text-[#191C1D] outline-none">
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="modal-server-cancel" class="m3-btn px-4 py-2 text-sm text-[#3F4849] hover:bg-[#00696D]/10">Cancel</button>
+        <button id="modal-server-save" class="m3-btn px-4 py-2 text-sm bg-[#00696D] text-white font-medium hover:bg-[#00575a]">Save</button>
       </div>
     </div>
   </div>

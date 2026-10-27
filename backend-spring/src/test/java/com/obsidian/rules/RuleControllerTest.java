@@ -153,4 +153,23 @@ class RuleControllerTest extends IntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orgId").value(team.org().getId().toString()));
     }
+
+    @Test
+    void mobileBearerCanDeleteRule() throws Exception {
+        String token = mapper.readTree(mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + team.employee().email() + "\",\"password\":\"" + TestAccounts.PASSWORD
+                                + "\",\"client\":\"MOBILE\"}"))
+                .andReturn().getResponse().getContentAsString()).get("token").asText();
+
+        String ruleJson = mvc.perform(post("/api/v1/rules/bypass").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"indicatorType\":\"DOMAIN\",\"indicatorValue\":\"delete-me.example\",\"ttlMinutes\":15}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String ruleId = mapper.readTree(ruleJson).get("id").asText();
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/rules/" + ruleId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
 }

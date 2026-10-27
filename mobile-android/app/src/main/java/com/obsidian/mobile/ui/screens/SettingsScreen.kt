@@ -15,22 +15,31 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Policy
-import androidx.compose.material3.Divider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -48,8 +57,14 @@ import com.obsidian.mobile.theme.Surface
 @Composable
 fun SettingsScreen(
     userEmail: String,
+    userDisplayName: String? = null,
+    organizationName: String? = null,
+    serverUrl: String = "http://10.0.2.2:8080",
+    onServerUrlChanged: (String) -> Unit = {},
     isNotificationAccessOn: Boolean,
     onNotificationAccessChanged: (Boolean) -> Unit,
+    isDefaultBrowser: Boolean = false,
+    onRequestDefaultBrowserClick: () -> Unit = {},
     isFingerprintLockOn: Boolean,
     onFingerprintLockChanged: (Boolean) -> Unit,
     isHighContrastBlackOn: Boolean,
@@ -60,6 +75,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    var showServerDialog by remember { mutableStateOf(false) }
+    var tempServerUrl by remember { mutableStateOf(serverUrl) }
 
     Column(
         modifier = modifier
@@ -86,10 +103,16 @@ fun SettingsScreen(
 
         // Section: Protection
         SettingsSectionHeader(title = "Protection")
+        SettingsNavigationRow(
+            icon = Icons.Filled.Language,
+            title = "Default browser defense",
+            subtitle = if (isDefaultBrowser) "Active · Intercepting & verifying all web links" else "Set Obsidian as default browser to analyze all links",
+            onClick = onRequestDefaultBrowserClick
+        )
         SettingsSwitchRow(
             icon = Icons.Filled.Notifications,
             title = "Notification access",
-            subtitle = if (isNotificationAccessOn) "On" else "Off",
+            subtitle = if (isNotificationAccessOn) "On · SMS & WhatsApp triage" else "Off",
             checked = isNotificationAccessOn,
             onCheckedChange = onNotificationAccessChanged
         )
@@ -99,6 +122,20 @@ fun SettingsScreen(
             subtitle = "Required to open the app and edit rules",
             checked = isFingerprintLockOn,
             onCheckedChange = onFingerprintLockChanged
+        )
+
+        SettingsDivider()
+
+        // Section: Backend Connection
+        SettingsSectionHeader(title = "Backend Service")
+        SettingsNavigationRow(
+            icon = Icons.Filled.Dns,
+            title = "Control Plane Server",
+            subtitle = serverUrl,
+            onClick = {
+                tempServerUrl = serverUrl
+                showServerDialog = true
+            }
         )
 
         SettingsDivider()
@@ -123,14 +160,23 @@ fun SettingsScreen(
 
         // Section: Account
         SettingsSectionHeader(title = "Account")
+        val accountSubtitle = buildString {
+            append(userEmail)
+            if (!organizationName.isNullOrBlank()) {
+                append(" · ")
+                append(organizationName)
+            } else {
+                append(" · Personal Defense")
+            }
+        }
         SettingsNavigationRow(
             icon = Icons.Filled.AccountCircle,
-            title = userEmail,
-            subtitle = "Signed in",
+            title = userDisplayName ?: userEmail,
+            subtitle = accountSubtitle,
             onClick = {}
         )
         SettingsNavigationRow(
-            icon = Icons.Filled.Logout,
+            icon = Icons.AutoMirrored.Filled.Logout,
             title = "Sign out",
             subtitle = null,
             onClick = onSignOutClick
@@ -144,7 +190,7 @@ fun SettingsScreen(
             icon = Icons.Filled.Policy,
             title = "Privacy policy",
             subtitle = null,
-            trailingIcon = Icons.Filled.OpenInNew,
+            trailingIcon = Icons.AutoMirrored.Filled.OpenInNew,
             onClick = onPrivacyPolicyClick
         )
         SettingsNavigationRow(
@@ -160,6 +206,44 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+
+    if (showServerDialog) {
+        AlertDialog(
+            onDismissRequest = { showServerDialog = false },
+            title = { Text("Server URL", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter Spring Boot backend URL (e.g., http://10.0.2.2:8080 on emulator or http://localhost:8080)",
+                        fontSize = 13.sp,
+                        color = OnSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = tempServerUrl,
+                        onValueChange = { tempServerUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onServerUrlChanged(tempServerUrl.trim())
+                        showServerDialog = false
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showServerDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
@@ -177,7 +261,7 @@ private fun SettingsSectionHeader(title: String) {
 
 @Composable
 private fun SettingsDivider() {
-    Divider(
+    HorizontalDivider(
         color = OutlineVariant.copy(alpha = 0.5f),
         thickness = 1.dp,
         modifier = Modifier.padding(vertical = 12.dp)
@@ -202,15 +286,13 @@ private fun SettingsSwitchRow(
     ) {
         Row(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = OnSurfaceVariant,
-                modifier = Modifier
-                    .size(24.dp)
-                    .padding(top = 2.dp)
+                modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column {
@@ -220,10 +302,10 @@ private fun SettingsSwitchRow(
                     fontWeight = FontWeight.Normal,
                     color = OnSurface
                 )
-                subtitle?.let {
+                if (subtitle != null) {
                     Text(
-                        text = it,
-                        fontSize = 14.sp,
+                        text = subtitle,
+                        fontSize = 13.sp,
                         color = OnSurfaceVariant
                     )
                 }
@@ -235,7 +317,9 @@ private fun SettingsSwitchRow(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = OnPrimary,
-                checkedTrackColor = Primary
+                checkedTrackColor = Primary,
+                uncheckedThumbColor = OnSurfaceVariant,
+                uncheckedTrackColor = OutlineVariant
             )
         )
     }
@@ -259,15 +343,13 @@ private fun SettingsNavigationRow(
     ) {
         Row(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = OnSurfaceVariant,
-                modifier = Modifier
-                    .size(24.dp)
-                    .padding(top = 2.dp)
+                modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column {
@@ -277,19 +359,19 @@ private fun SettingsNavigationRow(
                     fontWeight = FontWeight.Normal,
                     color = OnSurface
                 )
-                subtitle?.let {
+                if (subtitle != null) {
                     Text(
-                        text = it,
-                        fontSize = 14.sp,
+                        text = subtitle,
+                        fontSize = 13.sp,
                         color = OnSurfaceVariant
                     )
                 }
             }
         }
 
-        trailingIcon?.let {
+        if (trailingIcon != null) {
             Icon(
-                imageVector = it,
+                imageVector = trailingIcon,
                 contentDescription = null,
                 tint = OnSurfaceVariant,
                 modifier = Modifier.size(20.dp)
@@ -313,30 +395,27 @@ private fun SettingsInfoRow(
     ) {
         Row(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = OnSurfaceVariant,
-                modifier = Modifier
-                    .size(24.dp)
-                    .padding(top = 2.dp)
+                modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = OnSurface
-                )
-                Text(
-                    text = value,
-                    style = MonospaceBodyMedium,
-                    color = OnSurfaceVariant
-                )
-            }
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = OnSurface
+            )
         }
+
+        Text(
+            text = value,
+            style = MonospaceBodyMedium,
+            color = OnSurfaceVariant
+        )
     }
 }

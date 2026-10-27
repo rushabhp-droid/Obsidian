@@ -479,12 +479,79 @@
     updateUI();
   }
 
+  async function syncBackendRules() {
+    try {
+      const res = await fetch('/api/v1/rules');
+      if (res.ok) {
+        const rules = await res.json();
+        const blocked = [];
+        const trusted = [];
+        rules.forEach(r => {
+          if (r.listType === 'BLACKLIST') {
+            blocked.push({
+              id: r.id,
+              type: r.indicatorType,
+              value: r.indicatorValue,
+              subtitle: r.subtitle || (r.source === 'ADMIN_POLICY' ? 'Added by your organization' : 'Reported by you · Today')
+            });
+          } else if (r.listType === 'WHITELIST') {
+            trusted.push({
+              id: r.id,
+              type: r.indicatorType,
+              value: r.indicatorValue,
+              subtitle: r.subtitle || 'Trusted by you · Today',
+              expires: r.expiresAt ? 'Expires in 15 min' : null
+            });
+          }
+        });
+        if (blocked.length > 0) state.blockedRules = blocked;
+        if (trusted.length > 0) state.trustedRules = trusted;
+        updateUI();
+      }
+    } catch (e) {
+      console.warn('Backend rules sync offline', e);
+    }
+  }
+
+  async function syncBackendScans() {
+    try {
+      const res = await fetch('/api/v1/scans');
+      if (res.ok) {
+        const scans = await res.json();
+        if (scans && scans.length > 0) {
+          scans.forEach(s => {
+            const domain = (s.indicatorChecked || '').replace(/^https?:\/\//i, '').split('/')[0];
+            if (!state.messages.some(m => m.displayDomain === domain || m.fullUrl === s.indicatorChecked)) {
+              state.messages.unshift({
+                id: s.id,
+                sender: s.sender || 'Unknown',
+                isSavedContact: false,
+                channel: s.channel || 'SMS',
+                fullUrl: s.indicatorChecked || '',
+                displayDomain: domain || s.indicatorChecked || '',
+                timestamp: 'Synced',
+                dateGroup: 'Today',
+                status: s.verdict === 'MALICIOUS' ? 'SCAM' : s.verdict === 'SUSPICIOUS' ? 'SUSPICIOUS' : s.verdict === 'PENDING' ? 'CHECKING' : 'NO_THREATS_FOUND',
+                checkedBy: s.verdict === 'MALICIOUS' ? `Flagged by ${s.vtPositives || 14} security vendors on VirusTotal` : 'Threat intelligence scan',
+                explanation: s.verdict === 'MALICIOUS' ? 'Known phishing threat flagged by security network.' : 'Verified clean link.'
+              });
+            }
+          });
+          updateUI();
+        }
+      }
+    } catch (e) {
+      console.warn('Backend scans sync offline', e);
+    }
+  }
+
   function deleteRule(id) {
     if (state.rulesActiveTab === 'BLOCKED') {
       state.blockedRules = state.blockedRules.filter(r => r.id !== id);
     } else {
       state.trustedRules = state.trustedRules.filter(r => r.id !== id);
     }
+    fetch('/api/v1/rules/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
     updateUI();
   }
 
@@ -501,10 +568,31 @@
     return str ? String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '';
   }
 
+  async function syncBackendMe() {
+    try {
+      const res = await fetch('/api/v1/auth/me');
+      if (res.ok) {
+        const user = await res.json();
+        const settingsUserName = document.getElementById('settings-user-name');
+        const settingsUserSub = document.getElementById('settings-user-sub');
+        if (settingsUserName) settingsUserName.textContent = user.displayName || user.email;
+        if (settingsUserSub) {
+          const org = user.organization ? user.organization.name : 'Personal Defense';
+          settingsUserSub.textContent = `${user.email} · ${org}`;
+        }
+      }
+    } catch (e) {
+      console.warn('Backend profile sync offline', e);
+    }
+  }
+
   // Event Listeners Setup
   btnUnlock.addEventListener('click', () => {
     state.isUnlocked = true;
     state.activeScreen = state.notificationAccessGranted ? 'home' : 'home-setup';
+    syncBackendRules();
+    syncBackendScans();
+    syncBackendMe();
     updateUI();
   });
 
@@ -598,9 +686,14 @@
         });
       }
       state.trustedRules = state.trustedRules.filter(r => r.value !== item.displayDomain);
+      fetch('/api/v1/rules/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indicatorType: 'URL', indicatorValue: item.displayDomain, threatCategory: 'PHISHING' })
+      }).catch(() => {});
     }
     state.activeScreen = 'report-confirmed';
-    showAlert('Threat Blocked & Reported', `${item.displayDomain} blacklisted across your device and enterprise daemon fleet.`);
+    showAlert('Threat Blocked & Reported', `${item?.displayDomain || 'Threat'} blacklisted across your device and enterprise daemon fleet.`);
     updateUI();
   });
 
@@ -619,9 +712,14 @@
         });
       }
       state.blockedRules = state.blockedRules.filter(r => r.value !== item.displayDomain);
+      fetch('/api/v1/rules/bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indicatorType: 'URL', indicatorValue: item.displayDomain, ttlMinutes: 15 })
+      }).catch(() => {});
     }
     state.activeScreen = state.activeTab;
-    showAlert('Temporary Whitelist Active', `${item.displayDomain} allowed on this device for 15 minutes.`);
+    showAlert('Temporary Whitelist Active', `${item?.displayDomain || 'Link'} allowed on this device for 15 minutes.`);
     updateUI();
   });
 
@@ -686,6 +784,11 @@
       });
       state.trustedRules = state.trustedRules.filter(r => r.value !== val);
       state.rulesActiveTab = 'BLOCKED';
+      fetch('/api/v1/rules/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indicatorType: type, indicatorValue: val, threatCategory: 'PHISHING' })
+      }).catch(() => {});
     } else {
       state.trustedRules.unshift({
         id: 'tst-' + Date.now(),
@@ -696,6 +799,11 @@
       });
       state.blockedRules = state.blockedRules.filter(r => r.value !== val);
       state.rulesActiveTab = 'TRUSTED';
+      fetch('/api/v1/rules/bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indicatorType: type, indicatorValue: val, ttlMinutes: parseInt(ttlOption || '15', 10) })
+      }).catch(() => {});
     }
 
     addRuleModal.classList.add('hidden');
@@ -726,8 +834,39 @@
 
   btnSignOut.addEventListener('click', () => {
     state.isUnlocked = false;
+    fetch('/api/v1/auth/logout', { method: 'POST' }).catch(() => {});
     updateUI();
   });
+
+  const btnServerUrl = document.getElementById('btn-server-url');
+  const serverUrlModal = document.getElementById('server-url-modal');
+  const modalServerInput = document.getElementById('modal-server-input');
+  const modalServerCancel = document.getElementById('modal-server-cancel');
+  const modalServerSave = document.getElementById('modal-server-save');
+  const settingsServerUrl = document.getElementById('settings-server-url');
+
+  if (btnServerUrl && serverUrlModal) {
+    btnServerUrl.addEventListener('click', () => {
+      serverUrlModal.classList.remove('hidden');
+    });
+  }
+  if (modalServerCancel && serverUrlModal) {
+    modalServerCancel.addEventListener('click', () => {
+      serverUrlModal.classList.add('hidden');
+    });
+  }
+  if (modalServerSave && serverUrlModal) {
+    modalServerSave.addEventListener('click', () => {
+      const url = modalServerInput.value.trim();
+      if (url && settingsServerUrl) {
+        settingsServerUrl.textContent = url;
+      }
+      serverUrlModal.classList.add('hidden');
+      syncBackendRules();
+      syncBackendScans();
+      syncBackendMe();
+    });
+  }
 
   alertCloseBtn.addEventListener('click', () => {
     headsUpAlert.classList.add('hidden');
@@ -735,6 +874,12 @@
 
   // Interactive Demo Dock Scenarios
   demoPhishWhatsapp.addEventListener('click', () => {
+    fetch('/api/v1/scan/unified', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: 'WHATSAPP', sender: 'Rahul', isSavedContact: true, urls: ['https://secure-login-verify.co/kyc-update'] })
+    }).catch(() => {});
+
     const newMsg = {
       id: 'msg-' + Date.now(),
       sender: 'Rahul',
@@ -754,6 +899,12 @@
   });
 
   demoSuspiciousSms.addEventListener('click', () => {
+    fetch('/api/v1/scan/unified', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: 'SMS', sender: '+91 98200 11234', isSavedContact: false, urls: ['https://bit.ly/3xQa9'] })
+    }).catch(() => {});
+
     const newMsg = {
       id: 'msg-' + Date.now(),
       sender: '+91 98200 11234',
@@ -773,6 +924,12 @@
   });
 
   demoSafeYoutube.addEventListener('click', () => {
+    fetch('/api/v1/scan/unified', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: 'WHATSAPP', sender: 'Mom', isSavedContact: true, urls: ['https://youtube.com/watch?v=sample'] })
+    }).catch(() => {});
+
     const newMsg = {
       id: 'msg-' + Date.now(),
       sender: 'Mom',

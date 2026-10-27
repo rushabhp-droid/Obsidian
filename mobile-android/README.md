@@ -60,11 +60,21 @@ This application adheres strictly to the **Obsidian Android (Final)** design sys
 - Extracts individual messages from `NotificationCompat.MessagingStyle` (`EXTRA_MESSAGES`), bypassing generic summary notifications ("3 new messages").
 - Uses a bounded deduplication cache to handle duplicate notification posts.
 
-### 4. Rule Precedence (`ThreatScanner.kt`)
+### 4. Rule Precedence & Backend Synchronization (`ThreatScanner.kt`, `RuleRepository.kt`)
 Matches the Master Plan rule precedence:
-1. Local Whitelist (Trusted rules that haven't expired)
-2. Local Blacklist (Blocked rules)
+1. Local & Remote Whitelist (Trusted rules that haven't expired)
+2. Local & Remote Blacklist (Blocked rules with organization crowd-immunity)
 3. Backend `/api/v1/scan/unified` + VirusTotal API v3 + Heuristic Intelligence
+
+### 5. Backend REST API Integration (`ApiClient.kt`)
+- **Bearer Token Auth (`POST /api/v1/auth/login`)**: Mobile client authentication issuing `obm_...` bearer tokens stored in Android Keystore / encrypted storage.
+- **Session Profile (`GET /api/v1/auth/me`)**: Retrieves user display name, email, and organization details (`Aster Capital`).
+- **Telemetry History (`GET /api/v1/scans`)**: Synchronizes scan telemetry logs into the Messages triage feed.
+- **Rules Synchronization (`GET /api/v1/rules`)**: Fetches active blacklist and whitelist entries.
+- **Threat Reporting (`POST /api/v1/rules/report`)**: Upserts blacklisted domains to PostgreSQL and broadcasts to firewall daemons.
+- **Whitelist Bypass (`POST /api/v1/rules/bypass`)**: Upserts trusted indicators with 15-minute TTL.
+- **Rule Deletion (`DELETE /api/v1/rules/{id}`)**: Deletes rules with audit trail logging.
+- **Configurable Control Plane**: Settings screen allows configuring backend endpoint (default: `http://10.0.2.2:8080`).
 
 ---
 
@@ -73,12 +83,13 @@ Matches the Master Plan rule precedence:
 ### Option A: Interactive Web Simulator (Instant Preview)
 A zero-dependency HTTP server and frontend simulator is provided to test the app right now in your browser:
 ```bash
-cd /home/nghate/.gemini/antigravity/scratch/obsidian-mobile/web-simulator
+cd mobile-android/web-simulator
 node server.js
 ```
 Open **`http://localhost:3300`** in any browser. The simulator includes:
 - Live phone frame with pixel-perfect Stitch UI
 - Interactive tab navigation and screen transitions
+- Full REST API integration with real-time rule and scan synchronization
 - Live Threat Scenario Generators:
   * WhatsApp Phishing (`secure-login-verify.co`)
   * Suspicious SMS (`bit.ly/3xQa9`)
@@ -86,10 +97,11 @@ Open **`http://localhost:3300`** in any browser. The simulator includes:
   * SIM Change Alert (locks session)
   * Biometric Fingerprint lock/unlock trigger
 
-### Option B: Android Studio / Gradle
-Open the project in Android Studio or build with Gradle:
+### Option B: Android Native (Gradle / Studio)
+Build and test with Gradle:
 ```bash
-cd /home/nghate/.gemini/antigravity/scratch/obsidian-mobile
-./gradlew assembleDebug
+cd mobile-android
+./gradlew testDebugUnitTest  # Run unit tests
+./gradlew assembleDebug      # Build debug APK
 ```
-Deploy the APK to an Android 8.0+ (API 26+) phone or emulator. Grant the **Notification Listener** permission when prompted to enable live WhatsApp and SMS interception.
+Deploy the generated APK at `app/build/outputs/apk/debug/app-debug.apk` to an Android 8.0+ (API 26+) phone or emulator. Grant the **Notification Listener** permission when prompted to enable live WhatsApp and SMS interception.

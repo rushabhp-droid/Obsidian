@@ -11,6 +11,11 @@ import com.obsidian.mobile.sim.SimChangeMonitor
 import com.obsidian.mobile.theme.ObsidianMobileTheme
 import com.obsidian.mobile.ui.ObsidianApp
 
+import android.app.role.RoleManager
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+
 class MainActivity : FragmentActivity() {
 
     private val tokenStorage by lazy { TokenStorage(this) }
@@ -25,6 +30,42 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun isDefaultBrowser(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            return roleManager?.isRoleHeld(RoleManager.ROLE_BROWSER) == true
+        }
+        return false
+    }
+
+    private fun requestDefaultBrowserRole() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_BROWSER)) {
+                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_BROWSER)
+                startActivityForResult(intent, 2001)
+                return
+            }
+        }
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            startActivity(intent)
+        } catch (e: Exception) {
+            val intent = Intent(Settings.ACTION_SETTINGS)
+            startActivity(intent)
+        }
+    }
+
+    private fun requestNotificationAccess() {
+        try {
+            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+            startActivity(intent)
+        } catch (e: Exception) {
+            val intent = Intent(Settings.ACTION_SETTINGS)
+            startActivity(intent)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -32,6 +73,9 @@ class MainActivity : FragmentActivity() {
             ObsidianMobileTheme {
                 ObsidianApp(
                     tokenStorage = tokenStorage,
+                    isDefaultBrowser = isDefaultBrowser(),
+                    onRequestDefaultBrowser = { requestDefaultBrowserRole() },
+                    onRequestNotificationAccess = { requestNotificationAccess() },
                     onTriggerBiometric = { onSuccess ->
                         if (biometricAuthManager.canAuthenticate()) {
                             biometricAuthManager.promptBiometric(

@@ -37,7 +37,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ScanService {
 
-    private static final Set<Channel> SCAN_CHANNELS = EnumSet.of(Channel.SMS, Channel.WHATSAPP, Channel.EMAIL);
+    private static final Set<Channel> SCAN_CHANNELS = EnumSet.of(Channel.SMS, Channel.WHATSAPP, Channel.EMAIL, Channel.BROWSER);
     private static final int MAX_URLS = 20;
     private static final int MAX_HASHES = 20;
     private static final int MAX_TEXT = 5000;
@@ -116,7 +116,7 @@ public class ScanService {
 
     public ScanResponse scan(Account account, ScanRequest request) {
         if (request.channel() == null || !SCAN_CHANNELS.contains(request.channel())) {
-            throw new InvalidScanRequestException("channel must be SMS, WHATSAPP or EMAIL.");
+            throw new InvalidScanRequestException("channel must be SMS, WHATSAPP, EMAIL or BROWSER.");
         }
         boolean hasText = request.text() != null && !request.text().isBlank();
         if (request.isSavedContact() && hasText) {
@@ -265,7 +265,7 @@ public class ScanService {
     private record Sender(IndicatorType type, String value) {}
 
     private static Optional<Sender> senderIndicator(Channel channel, String sender) {
-        if (sender == null || sender.isBlank()) {
+        if (sender == null || sender.isBlank() || channel == Channel.BROWSER) {
             return Optional.empty();
         }
         IndicatorType type = channel == Channel.EMAIL ? IndicatorType.EMAIL : IndicatorType.PHONE;

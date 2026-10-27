@@ -132,7 +132,11 @@ class ThreatScanner(
                     timestamp = currentTime,
                     dateGroup = "Today",
                     status = status,
-                    checkedBy = response.details ?: "Reported by other users and flagged by security scanners",
+                    checkedBy = if (response.vtDetections > 0) {
+                        "Flagged by ${response.vtDetections} security engines on VirusTotal v3"
+                    } else {
+                        response.details ?: "Obsidian Threat Intelligence Scanner"
+                    },
                     explanation = if (status == MessageCheckStatus.SCAM) {
                         "We blocked it before it could open. Don't enter any passwords or one-time codes on this site."
                     } else if (status == MessageCheckStatus.SUSPICIOUS) {
@@ -152,6 +156,122 @@ class ThreatScanner(
                 e.printStackTrace()
             }
         }
+    }
+
+    suspend fun scanUrl(
+        url: String,
+        channel: ChannelType = ChannelType.BROWSER,
+        sender: String = "Web Link"
+    ): MessageCheckItem = withContext(Dispatchers.IO) {
+        val domain = if (url.isNotBlank()) {
+            com.obsidian.mobile.intercept.UrlExtractor.extractDomain(url)
+        } else {
+            "unknown"
+        }
+        val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
+        // 1. Check local & remote Whitelist
+        val isWhitelisted = ruleRepository.trustedRules.value.any {
+            it.indicatorValue.equals(domain, ignoreCase = true) ||
+                    it.indicatorValue.equals(url, ignoreCase = true)
+        }
+        if (isWhitelisted) {
+            val cleanItem = MessageCheckItem(
+                sender = sender,
+                isSavedContact = false,
+                channel = channel,
+                fullUrl = url,
+                displayDomain = domain,
+                timestamp = currentTime,
+                dateGroup = "Today",
+                status = MessageCheckStatus.NO_THREATS_FOUND,
+                checkedBy = "Matched device trusted whitelist policy",
+                explanation = "Explicitly allowed by organization or user bypass.",
+                isTrusted = true
+            )
+            withContext(Dispatchers.Main) {
+                messageRepository.addMessage(cleanItem)
+            }
+            return@withContext cleanItem
+        }
+
+        // 2. Check local & remote Blacklist
+        val isBlacklisted = ruleRepository.blockedRules.value.any {
+            it.indicatorValue.equals(domain, ignoreCase = true) ||
+                    it.indicatorValue.equals(url, ignoreCase = true)
+        }
+        if (isBlacklisted) {
+            val scamItem = MessageCheckItem(
+                sender = sender,
+                isSavedContact = false,
+                channel = channel,
+                fullUrl = url,
+                displayDomain = domain,
+                timestamp = currentTime,
+                dateGroup = "Today",
+                status = MessageCheckStatus.SCAM,
+                checkedBy = "Matched active blacklist rule in organization threat policy",
+                explanation = "We blocked it before it could open. Known dangerous site.",
+                isReported = true
+            )
+            withContext(Dispatchers.Main) {
+                messageRepository.addMessage(scamItem)
+                threatAlertManager.showMaliciousUrlAlert(sender, url, "Blacklisted Threat")
+            }
+            return@withContext scamItem
+        }
+
+        // 3. Scan with backend / VirusTotal / Heuristics
+        val request = UnifiedScanRequest(
+            channel = channel,
+            sender = sender,
+            isSavedContact = false,
+            text = null,
+            urls = listOf(url)
+        )
+
+        val response = try {
+            apiClient.service.scanUnified(request)
+        } catch (e: Exception) {
+            evaluateLocalHeuristics(url, domain, null)
+        }
+
+        val status = when (response.verdict) {
+            ThreatVerdict.MALICIOUS -> MessageCheckStatus.SCAM
+            ThreatVerdict.SUSPICIOUS -> MessageCheckStatus.SUSPICIOUS
+            ThreatVerdict.PENDING -> MessageCheckStatus.CHECKING
+            ThreatVerdict.CLEAN, ThreatVerdict.BYPASSED -> MessageCheckStatus.NO_THREATS_FOUND
+        }
+
+        val item = MessageCheckItem(
+            sender = sender,
+            isSavedContact = false,
+            channel = channel,
+            fullUrl = url,
+            displayDomain = domain,
+            timestamp = currentTime,
+            dateGroup = "Today",
+            status = status,
+            checkedBy = if (response.vtDetections > 0) {
+                "Flagged by ${response.vtDetections} security engines on VirusTotal v3"
+            } else {
+                response.details ?: "Obsidian Threat Intelligence Engine"
+            },
+            explanation = when (status) {
+                MessageCheckStatus.SCAM -> "Blocked high-risk scam/phishing link before opening."
+                MessageCheckStatus.SUSPICIOUS -> "Suspicious indicators found. Proceed with caution."
+                else -> "Clean link verified against threat intelligence feeds."
+            },
+            isReported = (status == MessageCheckStatus.SCAM)
+        )
+
+        withContext(Dispatchers.Main) {
+            messageRepository.addMessage(item)
+            if (status == MessageCheckStatus.SCAM) {
+                threatAlertManager.showMaliciousUrlAlert(sender, url, response.category.name)
+            }
+        }
+        item
     }
 
     private fun evaluateLocalHeuristics(url: String, domain: String, text: String?): UnifiedScanResponse {
