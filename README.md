@@ -4,7 +4,34 @@
 
 When someone reports a phishing link from a phone, Obsidian blocks it on every machine in the organization in under a second.
 
-> **Status:** 24-hour hackathon project, currently in planning. The full implementation plan is in [`TODO.md`](TODO.md). The components listed below don't exist in the repo yet.
+> **Status:** 24-hour hackathon project, in progress. The plan is in [`TODO.md`](TODO.md); the shared API/WebSocket contract is [`docs/protocol.md`](docs/protocol.md). See [Current status](#current-status) for what works today.
+
+---
+
+## Current status
+
+| Component | State |
+| --- | --- |
+| `db/init.sql`, `docker-compose.yml`, `.env.example` | Done. Schema = TODO.md §4 + Spring WebAuthn tables + `users.display_name/gmail_address/gmail_last_polled_at` + `scanned_emails`. |
+| `docs/protocol.md` | Done: REST, scan, `/ws/firewall`, `/ws/dashboard`, Redis keys. |
+| `backend-spring/` auth | Done: password login (Argon2id), passkeys (Spring WebAuthn, JDBC tables), `__Host-session` in Redis, CSRF cookie, mobile bearer tokens, Turnstile. |
+| `backend-spring/` rules | Done: `RulePrecedence`, `RuleService` (upsert → audit → Redis publish), `GET /rules`, `POST /rules/report`, `POST /rules/bypass`. |
+| `backend-spring/` scanner | Done: `POST /scan/unified`, `GET /scans`, VirusTotal v3 client (cache, 4/min limiter, submit + poll, `PENDING`). |
+| `backend-spring/` email analysis + Gmail | Done: topmost `mx.google.com` Authentication-Results parser, MIME links + attachment SHA-256, "verified official" allowlist, Gmail OAuth (encrypted refresh token), polling worker, `GET /emails`, `/integrations/gmail`. |
+| `backend-spring/` WebSockets + agents | Not started: `/ws/firewall` (SYNC/BLOCK/BYPASS/HEARTBEAT), `/ws/dashboard`, Redis fan-out, `POST/GET /agents`. Events are already published to Redis. |
+| `web-dashboard/` | P0 screens on sample data. Field names checked against the backend by `ApiContractTest` (parses `types.ts`); match so far. Not yet run in `live` mode. |
+| `daemon-rust/` | Not started (P0). |
+| `mobile-android/` | Clickable prototype only (`docs/prototype/android.html`). |
+| `scripts/`, `cloudflared/` | Not started. |
+
+Backend tests: 208/208 pass (`cd backend-spring && gradle test`), against embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed for tests.
+
+### What is left (P0, in order)
+1. `/ws/firewall`, `/ws/dashboard`, Redis listener, agents API.
+2. Rust daemon (`daemon-rust/`) per TODO.md Module 4.
+3. No-Docker dev runtime, `scripts/seed.sql`, `prewarm-vt.sh`, `reset-demo.sh`, `cloudflared/config.yml`.
+4. Frontend: read problem-detail `detail` in `api.ts`, map 400 (Turnstile) in login, run in `live` mode.
+5. Hour 8 milestone check.
 
 ---
 

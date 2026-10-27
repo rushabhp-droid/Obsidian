@@ -1,0 +1,14 @@
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@github.com header.s=pf2023 header.b=abc;
+       spf=pass (google.com: domain of noreply@github.com designates 192.30.252.1 as permitted sender) smtp.mailfrom=noreply@github.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=github.com
+Authentication-Results: evil.example; spf=pass dkim=pass dmarc=pass
+From: GitHub <noreply@github.com>
+To: avery.lin@aster.example
+Subject: [GitHub] A new SSH key was added
+Date: Tue, 27 Oct 2026 09:00:00 +0000
+Message-ID: <official-1@github.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Review it at https://github.com/settings/keys

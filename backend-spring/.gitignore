@@ -1,0 +1,11 @@
+.gradle/
+build/
+out/
+*.iml
+.idea/
+# IDE (Eclipse / VS Code Java) output
+bin/
+.settings/
+.project
+.classpath
+.factorypath

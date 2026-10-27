@@ -1,0 +1,26 @@
+# Secrets (CLAUDE.md "Secrets"): never commit these.
+.env
+.env.*
+!.env.example
+client_secret*.json
+*.pem
+cloudflared/*.json
+cloudflared/cert.pem
+
+# Build outputs
+backend-spring/build/
+backend-spring/.gradle/
+daemon-rust/target/
+web-dashboard/.next/
+web-dashboard/node_modules/
+mobile-android/build/
+mobile-android/app/build/
+mobile-android/.gradle/
+mobile-android/local.properties
+
+# Editors and local tooling
+.idea/
+*.iml
+.vscode/
+.DS_Store
+.superpowers/

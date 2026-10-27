@@ -1,0 +1,81 @@
+# Secrets and per-environment values come from env (or ../.env, see
+# .env.example). Nothing secret has a default here.
+spring:
+  application:
+    name: obsidian
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/obsidian}
+    username: ${POSTGRES_USER:obsidian}
+    password: ${POSTGRES_PASSWORD:obsidian}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  mvc:
+    problemdetails:
+      enabled: true
+  http:
+    client:
+      # VirusTotal, Google and Cloudflare calls.
+      connect-timeout: 5s
+      read-timeout: 15s
+
+server:
+  port: 8080
+  servlet:
+    session:
+      # Redis-backed web session (spring:session:sessions:*), TODO.md §4.C.
+      timeout: 3600s
+  error:
+    include-message: never
+
+obsidian:
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:3000}
+  # Extra origins allowed on /ws/dashboard besides public-base-url.
+  allowed-origins: []
+  enc-key: ${APP_ENC_KEY:}
+  webauthn:
+    rp-id: ${RP_ID:localhost}
+    rp-name: Obsidian
+  turnstile:
+    secret-key: ${TURNSTILE_SECRET_KEY:}
+    verify-url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+  virustotal:
+    api-key: ${VT_API_KEY:}
+    base-url: https://www.virustotal.com/api/v3
+    # Free tier limits; the client-side limiter keeps under them.
+    per-minute: 4
+    per-day: 500
+  gmail:
+    client-id: ${GMAIL_CLIENT_ID:}
+    client-secret: ${GMAIL_CLIENT_SECRET:}
+    scopes: https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify
+    poll-interval: 45s
+    max-messages-per-poll: 20
+  email:
+    # "Verified official" needs SPF + DKIM + DMARC pass AND the sender's domain
+    # (or a parent of it) on this list, or whitelisted by a rule.
+    official-domains:
+      - google.com
+      - github.com
+      - microsoft.com
+      - apple.com
+      - amazon.com
+      - paypal.com
+      - linkedin.com
+      - cloudflare.com

@@ -1,0 +1,16 @@
+# Tests never reach VirusTotal, Google or Cloudflare: those clients are pointed
+# at stubs per test. Values here override anything a developer's ../.env sets.
+obsidian:
+  public-base-url: http://localhost:3000
+  enc-key: test-encryption-key
+  turnstile:
+    secret-key: ""
+  virustotal:
+    api-key: test-vt-key
+    base-url: http://vt.invalid/api/v3
+  gmail:
+    client-id: test-client-id
+    client-secret: test-client-secret
+    # Long enough that the scheduled worker never fires during a test run;
+    # tests call the worker directly.
+    poll-interval: 1h

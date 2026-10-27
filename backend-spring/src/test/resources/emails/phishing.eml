@@ -1,0 +1,29 @@
+Authentication-Results: mx.google.com;
+       spf=fail (google.com: domain of payroll@aster-payroll.example does not designate 203.0.113.9 as permitted sender) smtp.mailfrom=payroll@aster-payroll.example;
+       dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=aster-payroll.example
+From: "Payroll Team" <Payroll@Aster-Payroll.example>
+To: avery.lin@aster.example
+Subject: =?UTF-8?Q?Action_required=3A_confirm_your_salary_account?=
+Date: Tue, 27 Oct 2026 08:10:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=UTF-8
+
+Confirm here: http://login-verify.aster-payroll.example/reset
+--ALT
+Content-Type: text/html; charset=UTF-8
+
+<p>Confirm <a href="http://login-verify.aster-payroll.example/reset">here</a> or <a href="https://Docs.Example.org/Help">help</a></p>
+--ALT--
+--BOUNDARY
+Content-Type: application/octet-stream; name="invoice-4471.pdf.exe"
+Content-Disposition: attachment; filename="invoice-4471.pdf.exe"
+Content-Transfer-Encoding: base64
+
+aGVsbG8gd29ybGQ=
+--BOUNDARY--
