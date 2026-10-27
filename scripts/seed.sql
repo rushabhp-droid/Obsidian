@@ -29,3 +29,9 @@ INSERT INTO scan_logs (id, user_id, channel, sender, indicator_checked, verdict,
   ('c1000004-0000-4000-8000-000000000004', (SELECT id FROM users WHERE email = 'avery.lin@aster.example'), 'EMAIL', 'payroll@aster-payroll.example',
    'http://login-verify.aster-payroll.example/reset', 'MALICIOUS', 14, NOW() - INTERVAL '65 minutes')
 ON CONFLICT (id) DO NOTHING;
+
+-- B2C app account (Android, /api/b2c/v1), already email-verified.
+INSERT INTO consumers (id, email, display_name, password_hash, email_verified) VALUES
+  ('e5b7a9c1-4d6f-4b8c-9d2e-3f4a5b6c7d8e', 'sam.ortiz@mail.example', 'Sam Ortiz',
+   '$argon2id$v=19$m=19456,t=2,p=1$qqg92Uz6YhZW1xoZu5y5Aw$mObI0XLCXqxvuW8NJf5QZrYKAwNQ9X+H03uy+pAwf2c', TRUE)
+ON CONFLICT (email) DO NOTHING;

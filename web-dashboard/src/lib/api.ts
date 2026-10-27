@@ -7,8 +7,10 @@ import { mockApi } from "./mock-store";
 import type {
   BypassRequest,
   CodeFinding,
+  ConsumerReportQueueItem,
   EndpointAgent,
   GmailConnection,
+  IndicatorType,
   RegisteredAgent,
   ReportRequest,
   ScanLog,
@@ -73,6 +75,8 @@ const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body?: unknown, headers?: HeadersInit) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body), headers });
 
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
+
 const live = {
   // Auth and rule mutation requests follow docs/protocol.md.
   login: (email: string, password: string, turnstileToken: string | null) =>
@@ -95,6 +99,16 @@ const live = {
   listCodeFindings: () => get<CodeFinding[]>("/api/v1/code/findings"),
   setCodeFindingStatus: (id: string, status: "REVOKED" | "FALSE_POSITIVE") =>
     post<CodeFinding>(`/api/v1/code/findings/${encodeURIComponent(id)}/status`, { status }),
+
+  // Reports from the B2C app, admins only. Approving blocks the indicator globally.
+  listConsumerReports: () => get<ConsumerReportQueueItem[]>("/api/v1/consumer-reports"),
+  approveConsumerReport: (indicatorType: IndicatorType, indicatorValue: string) =>
+    post<ThreatRule>("/api/v1/consumer-reports/approve", { indicatorType, indicatorValue }),
+  dismissConsumerReport: (indicatorType: IndicatorType, indicatorValue: string) =>
+    post<void>("/api/v1/consumer-reports/dismiss", { indicatorType, indicatorValue }),
+  listProtectedDomains: () => get<string[]>("/api/v1/protected-domains"),
+  addProtectedDomain: (domain: string) => post<string[]>("/api/v1/protected-domains", { domain }),
+  removeProtectedDomain: (domain: string) => del<void>(`/api/v1/protected-domains/${encodeURIComponent(domain)}`),
 };
 
 export const api: typeof live = API_MODE === "live" ? live : mockApi;

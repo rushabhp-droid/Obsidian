@@ -29,8 +29,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // B2C: email sign-up codes over SMTP, and Google ID token checks (JWT signatures against Google's keys).
+    implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("org.springframework.security:spring-security-oauth2-jose")
     implementation("org.springframework.session:spring-session-data-redis")
-    // Jakarta Mail, used only to parse raw Gmail messages (no SMTP).
+    // Jakarta Mail parses raw Gmail messages; the B2C sign-up codes also use it for SMTP.
     implementation("org.eclipse.angus:angus-mail")
     // Spring Security's WebAuthn support needs WebAuthn4J on the classpath.
     implementation("com.webauthn4j:webauthn4j-core:0.29.7.RELEASE")

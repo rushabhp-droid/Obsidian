@@ -10,6 +10,7 @@ This file tracks unfinished work only. The current implementation status is in [
 - **P1:** start only after the hour-8 firewall milestone below passes.
 - **ROADMAP:** do not implement, including stubs.
 - Code Guard was built early at the user's request. It is an existing P1 exception; other P1 work remains gated.
+- These gates are for the B2B service (web dashboard, daemon, `/api/v1`). The Android app is the separate B2C service (`/api/b2c/v1`, decided 2026-10-28): its on-device firewall, link checking and notification auditor are in scope, including the DNS/VPN mode the hackathon plan listed as ROADMAP. B2C still uses the shared backend, so the cross-cutting invariants in `AGENTS.md` apply to it.
 
 ## P0 — open work
 
@@ -22,44 +23,23 @@ The daemon has passed end-to-end checks in `--dry-run`; real iptables enforcemen
 - [ ] Run `scripts/build.sh run --daemon-root`, add a domain in the web firewall editor, and confirm the daemon blocks `curl` to it.
 - [ ] Bypass that rule and confirm `curl` works again.
 
-### 2. Connect the Android app to the backend
+### 2. Android (B2C) app: verify on a real phone
 
-The app builds and its unit tests pass (`cd mobile-android && ./gradlew assembleDebug testDebugUnitTest`), but it never talks to the backend for rules: nothing signs in, and report, trust and rule changes only update in-memory lists. See [`mobile-android/AGENTS.md`](mobile-android/AGENTS.md) and [`docs/protocol.md`](docs/protocol.md).
+The Android app is the B2C service: it has its own API (`/api/b2c/v1`, see [`docs/protocol.md`](docs/protocol.md#b2c-app-api-apib2cv1)), consumer accounts, and on-device protection. The B2B scope gates below don't apply to it (see "Scope gates"). Built and checked on the Android 17 emulator against `gradle bootTestRun`: sign-up with an emailed code, PIN lock, the protection checklist and its toast, the URL analyzer against VirusTotal, link checking as the default browser, the notification auditor on a real SMS, the firewall blocking a newly blocked name at once, reports, themes and relocking.
 
-Backend contract:
+- [ ] Google sign-in: create an OAuth client of type **Android** (package `com.obsidian.mobile` and the debug keystore's SHA-1) in the same Google Cloud project as `GMAIL_CLIENT_ID`, then sign in on a device or an emulator image with Google Play. Not tried yet.
+- [ ] Email codes over real SMTP: fill in `SMTP_*` in `.env` and sign up with a real address. Locally the codes were only logged.
+- [ ] Fingerprint unlock on hardware with an enrolled fingerprint (the emulator run used the PIN-only path).
+- [ ] Install on a physical phone and run for a day with the firewall on: battery, reconnects after network changes, and "Always-on VPN".
+- [ ] Notification auditor with WhatsApp (only the default SMS app was tried).
+- [ ] A consumer report promoted to a global block reaches a running daemon (section 3).
+- [ ] Rate-limit `/api/b2c/v1/auth/*` per IP and per email. Unlike dashboard sign-in there is no Turnstile, so password guessing and sign-up email floods are only slowed by Argon2 and the 45 s resend cooldown.
 
-- [ ] Add a sign-in screen. Call `POST /api/v1/auth/login` with `client: MOBILE` and a Turnstile token when the server has Turnstile enabled; login returns `{token, expiresAt}`, so read the profile from `/api/v1/auth/me`. Remove the `priya@example.com` default in `TokenStorage`.
-- [ ] Make the API origin configurable in settings and replace the `obsidian.example.com` placeholder. `setCustomBaseUrl` is never called and has no effect once the lazy Retrofit service exists. Allow cleartext HTTP only for local development hosts (`10.0.2.2`, `localhost`) through a network security config.
-- [ ] Load rules from `GET /api/v1/rules` and remove the seeded sample messages and rules in `MessageRepository` and `RuleRepository`.
-- [ ] Send **Report as scam** through `POST /api/v1/rules/report` with the backend's fields (`indicatorType`, `indicatorValue`, optional `threatCategory`). Report the link host as `DOMAIN` when it should be blocked on the daemon.
-- [ ] Send **I trust this link** and trusted rules through `POST /api/v1/rules/bypass` with `ttlMinutes` (1–1440, required for employees).
-- [ ] Decide what **Delete** on the Rules screen does. The backend has no `DELETE /api/v1/rules/{id}`, so remove that unused call. Removing a block can map to a bypass; there is no endpoint for removing a trust rule.
-- [ ] Match scan responses: allow `category: null` and consume `indicators[]` rather than `indicatorChecked`/`details`.
+Known limits, by design or Android's: the firewall only sees DNS, so incoming connections, DNS-over-TLS (Private DNS in "hostname" mode) and browsers' own secure DNS bypass it (the app warns about Private DNS); IPv6 addresses are only blocked in link checks; while the firewall applies a rule change there is a sub-second window where lookups aren't filtered.
 
-Invariants from `AGENTS.md`:
+### 3. Verify the report path to the daemon
 
-- [ ] When a scan request fails, show **Checking** (`PENDING`), never **No threats found**. `ThreatScanner.evaluateLocalHeuristics` returns `CLEAN` for unknown links; remove it (a local heuristic classifier is P1 work).
-- [ ] Fail closed on contact lookup. Without `READ_CONTACTS`, `ContactResolver` treats every sender as unknown, so text from saved contacts is sent to the backend.
-- [ ] Watch only the default SMS package. `MessagingNotificationService` also matches any package containing `sms` or `messaging`.
-- [ ] Deduplicate per message, not per notification post. WhatsApp reposts the conversation history with a new `postTime`, so earlier messages are scanned and alerted again.
-- [ ] Stop logging bearer tokens and message text: OkHttp `BODY` logging in `ApiClient` and the `Log.d` calls in `MessagingNotificationService`.
-
-Device readiness:
-
-- [ ] Request `READ_CONTACTS` and `POST_NOTIFICATIONS` at runtime. Make **Turn on message checking** open the notification-listener settings; today it only sets a preference.
-- [ ] Turn off SIM change detection until P1 opens. It runs on every resume and clears the bearer token when no SIM is present, which signs out a SIM-less test device.
-- [ ] Install on a device or emulator, sign in, and confirm that a link from an unknown sender is scanned by the backend and appears in the dashboard live feed.
-
-Not blocking the demo:
-
-- [ ] Open the message screen when a threat notification is tapped; the `OPEN_SCREEN` and `EXTRA_URL` extras are never read.
-- [ ] Don't skip the lock screen when the device has no biometric or screen lock (`MainActivity`).
-- [ ] Don't fall back silently to unencrypted preferences in `TokenStorage`.
-- [ ] Make `RulePrecedenceTest` and `SimFingerprintTest` exercise app code; both test copies of the logic defined inside the test file.
-
-### 3. Verify the Android report path
-
-- [ ] Report a domain from Android and confirm the daemon from section 1 blocks it. This completes the hour-8 milestone.
+- [ ] Report a domain from the Android app that VirusTotal flags (or report it from 3 verified accounts, or approve it under **Consumer Reports** in the dashboard), and confirm the daemon from section 1 blocks it. This completes the hour-8 milestone.
 
 ### 4. Prepare the demo environment
 
@@ -74,7 +54,7 @@ Begin only after the hour-8 milestone passes.
 
 - [ ] TOTP MFA and QR enrollment.
 - [ ] Heuristic classifier for messages without links or attachments.
-- [ ] SIM change detection: review the existing code and turn it back on (it is turned off under P0).
+- [ ] SIM change detection: review the existing code and turn it back on (it is not wired into the app). `SimFingerprintTest` tests a copy of the logic inside the test file; make it exercise `SimChangeMonitor`.
 - [ ] `BypassExpiryJob` to reapply a block when a bypass expires.
 - [ ] TTL picker and audit log view in the dashboard.
 - [ ] Daemon ACK latency in the dashboard.

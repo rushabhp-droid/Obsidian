@@ -94,7 +94,7 @@ public class RuleService {
                 : actor.inOrganization()
                         ? new Target(actor.orgId(), null, RuleSource.USER_REPORT)
                         : new Target(null, actor.userId(), RuleSource.USER_REPORT);
-        return write(actor, AuditAction.REPORT, target, type, value, ListType.BLACKLIST, threatCategory, null);
+        return write(actor, AuditAction.REPORT, target, type, value, ListType.BLACKLIST, threatCategory, null, null);
     }
 
     @Transactional
@@ -121,7 +121,22 @@ public class RuleService {
             target = new Target(null, actor.userId(), RuleSource.USER_BYPASS);
         }
         Instant expiresAt = ttlMinutes == null ? null : clock.instant().plus(ttlMinutes, ChronoUnit.MINUTES);
-        return write(actor, AuditAction.BYPASS, target, type, value, ListType.WHITELIST, ThreatCategory.SAFE, expiresAt);
+        return write(actor, AuditAction.BYPASS, target, type, value, ListType.WHITELIST, ThreatCategory.SAFE, expiresAt,
+                null);
+    }
+
+    /**
+     * A B2C consumer report promoted to a global block (no org, no user): every
+     * organization's daemons and every app user get it. {@code approver} is the
+     * admin who approved it, or null when VirusTotal or enough reporters did.
+     * {@code reason} goes into the audit row (consumer ids, never their emails).
+     */
+    @Transactional
+    public ThreatRule blockGlobally(Account approver, IndicatorType type, String rawValue, ThreatCategory category,
+            RuleSource source, Map<String, Object> reason) {
+        String value = Indicators.requireValid(type, rawValue);
+        return write(approver, AuditAction.CONSUMER_REPORT, new Target(null, null, source), type, value,
+                ListType.BLACKLIST, category == null ? ThreatCategory.MALICIOUS : category, null, reason);
     }
 
     /** The rule that decides this indicator for this user, after precedence. Value must be normalized. */
@@ -156,7 +171,7 @@ public class RuleService {
     }
 
     private ThreatRule write(Account actor, AuditAction action, Target target, IndicatorType type, String value,
-            ListType list, ThreatCategory category, Instant expiresAt) {
+            ListType list, ThreatCategory category, Instant expiresAt, Map<String, Object> extra) {
         Optional<ThreatRule> previous = jdbc.query(LOCK_SQL, ROW, target.orgId(), target.userId(), type.name(), value)
                 .stream().findFirst();
         if (previous.isPresent() && previous.get().getSource() == RuleSource.ADMIN_POLICY
@@ -175,9 +190,13 @@ public class RuleService {
         details.put("previousListType", previous.map(r -> r.getListType().name()).orElse(null));
         details.put("threatCategory", category.name());
         details.put("source", target.source().name());
-        details.put("scope", target.userId() == null ? "ORGANIZATION" : "USER");
+        details.put("scope", target.userId() != null ? "USER" : target.orgId() != null ? "ORGANIZATION" : "GLOBAL");
         details.put("expiresAt", expiresAt == null ? null : expiresAt.toString());
-        audit.record(action, actor.orgId(), actor.userId(), rule.getId(), details);
+        if (extra != null) {
+            details.putAll(extra);
+        }
+        audit.record(action, actor == null ? null : actor.orgId(), actor == null ? null : actor.userId(), rule.getId(),
+                details);
 
         events.publishEvent(new RuleChanged(rule, clock.instant()));
         return rule;

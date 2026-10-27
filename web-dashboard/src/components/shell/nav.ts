@@ -22,6 +22,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
     label: "MANAGEMENT",
     items: [
       { href: "/firewall", label: "Rules and Policies" },
+      { href: "/consumer-reports", label: "Consumer Reports" },
       { href: "/settings", label: "Settings" },
     ],
   },

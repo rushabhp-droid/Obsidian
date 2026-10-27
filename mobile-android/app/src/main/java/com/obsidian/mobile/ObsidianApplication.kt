@@ -3,34 +3,36 @@ package com.obsidian.mobile
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Context
-import android.os.Build
+import androidx.lifecycle.ProcessLifecycleOwner
+import com.obsidian.mobile.security.AppLock
 
 class ObsidianApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppGraph.init(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(AppLock)
         createNotificationChannels()
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_THREAT_ALERTS,
-                getString(R.string.notification_channel_alerts),
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_THREAT_ALERTS, getString(R.string.notification_channel_alerts),
+                NotificationManager.IMPORTANCE_HIGH).apply {
                 description = getString(R.string.notification_channel_alerts_desc)
                 enableVibration(true)
-                setShowBadge(true)
-            }
-
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-        }
+            })
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_FIREWALL, getString(R.string.notification_channel_firewall),
+                NotificationManager.IMPORTANCE_LOW).apply {
+                description = getString(R.string.notification_channel_firewall_desc)
+                setShowBadge(false)
+            })
     }
 
     companion object {
         const val CHANNEL_THREAT_ALERTS = "obsidian_threat_alerts"
+        const val CHANNEL_FIREWALL = "obsidian_firewall"
     }
 }

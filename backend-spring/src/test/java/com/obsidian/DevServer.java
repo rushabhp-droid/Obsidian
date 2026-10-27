@@ -26,6 +26,10 @@ public final class DevServer {
         if (System.getProperty("obsidian.enc-key") == null && System.getenv("APP_ENC_KEY") == null) {
             System.setProperty("obsidian.enc-key", "dev-only-encryption-key");
         }
+        // No SMTP needed locally: B2C sign-up and password reset codes go to the log.
+        if (System.getProperty("obsidian.b2c.log-codes") == null) {
+            System.setProperty("obsidian.b2c.log-codes", "true");
+        }
         SpringApplication.run(ObsidianApplication.class, args);
     }
 }

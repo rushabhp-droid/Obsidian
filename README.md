@@ -21,13 +21,14 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). A new tab requires sign-in after the last dashboard tab closes; reloading the same tab keeps the session. Field names are checked by `ApiContractTest`. |
 | Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
-| `mobile-android/` | Builds with its Gradle wrapper (`./gradlew assembleDebug testDebugUnitTest`), but it is not yet connected to the backend: there is no sign-in, and report, trust and rule changes stay on the phone. It has not been run on a device. The gaps are tracked in [`TODO.md`](TODO.md). The clickable prototype is `docs/prototype/android.html`. |
+| `mobile-android/` (B2C) | The consumer app, on its own API (`/api/b2c/v1`): sign-up with name, email and password verified by an emailed code (or Google), a required app lock (fingerprint when the phone has one, PIN always), and four tabs: **Home** (protection checklist, link and file checks, server and database status, alerts bell), **Activity** (grouped by threat, status or score, with a report panel), **Firewall** (a DNS-only local VPN with blacklist/whitelist and an outgoing/incoming request log) and **Settings** (default browser defense, notification auditor, lock, server address, six themes, account). Checked end to end on the Android 17 emulator; Google sign-in, real SMTP and physical devices are still open in [`TODO.md`](TODO.md). |
+| `backend-spring/` B2C | Done: `/api/b2c/v1` on its own stateless filter chain with `obc_` tokens and separate `consumers`, email codes over SMTP, Google ID token sign-in, scans with personal → shared → VirusTotal precedence, Activity, personal rules, the phone firewall's blocklist, and consumer reports that become global blocks when VirusTotal flags them, 3 verified consumers report them, or an admin approves them (never for a protected domain). The dashboard's **Consumer Reports** page is the admin queue. |
 
-Tests: backend 256/256 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
+Tests: backend 268/268 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`), Android 24/24 (`./gradlew testDebugUnitTest`).
 
 ### What is next
 
-The active P0 and gated P1 items are tracked in [`TODO.md`](TODO.md). The immediate goal is to verify real firewall enforcement and complete the Android-to-daemon report path.
+The active P0 and gated P1 items are tracked in [`TODO.md`](TODO.md). The immediate goal is to verify real firewall enforcement, then a consumer report from the Android app reaching the daemon.
 
 ---
 
@@ -102,10 +103,14 @@ flowchart LR
 - **Email triage.** "Verified official" requires SPF, DKIM and DMARC to pass **and** the sender domain to be on the allowlist. Links and attachments are scanned through VirusTotal.
 - **Report and Bypass everywhere.** Both are one click, on web and mobile.
 
-### Consumer
-- **Android app** with a biometric lock (fingerprint, PIN fallback).
-- **Real-time SMS and WhatsApp scanning** from notifications. For **saved contacts only links are sent**, and message text never leaves the phone.
-- **Personal web portal** for managing your own whitelist and blacklist.
+### Consumer (the Android app, its own B2C service)
+- **Sign-up** with a required name and an email verified by a 6-digit code, or with Google.
+- **App lock**: fingerprint when the phone has one, and a 6-digit PIN that is always there as the fallback.
+- **Notification auditor**: real-time SMS and WhatsApp scanning from notifications. For **saved contacts only links are sent**, and message text never leaves the phone.
+- **Default browser defense**: as the default browser, Obsidian checks every link before handing it to the real browser. Dangerous and still-unknown links are held with a warning.
+- **Phone firewall**: a local, DNS-only VPN that blocks the shared blocklist and your own blacklist in every app, with a whitelist and a log of outgoing lookups and the answers that come back.
+- **Link and file checks** on Home (files are checked by SHA-256; they never leave the phone), and an **Activity** history grouped by threat, status or risk score.
+- **Reports that protect everyone**: a report blocks on your phone at once, and for every user and organization once VirusTotal confirms it, 3 people report it, or an admin approves it. Popular sites can't be blocked this way.
 
 ### Enterprise
 - **Crowd immunity.** One employee's report blocks the indicator for the whole organization.
@@ -184,7 +189,7 @@ Each module also logs to `.run/<module>.log`. In dry-run the daemon writes its s
 
 To stop, press Ctrl+C, or run `kill "$(cat .run/run.pid)"` from another terminal. The daemon stops first, so it removes its blocks, then the dashboard and the API. With `--prod`, Docker containers that the run started are stopped too; their data stays in the volumes.
 
-If a module crashes, the others are stopped and its log tail is printed. If Turnstile is on, or the demo seed isn't loaded, the agent can't register itself: register one on **Endpoint Security** and pass `--agent-token FILE`, or use `OBSIDIAN_ADMIN_EMAIL` / `OBSIDIAN_ADMIN_PASSWORD`. The runner does not start Android; the Android source and its integration gaps are tracked in [`TODO.md`](TODO.md).
+If a module crashes, the others are stopped and its log tail is printed. If Turnstile is on, or the demo seed isn't loaded, the agent can't register itself: register one on **Endpoint Security** and pass `--agent-token FILE`, or use `OBSIDIAN_ADMIN_EMAIL` / `OBSIDIAN_ADMIN_PASSWORD`. The runner does not start Android; see "Android app (B2C)" below.
 
 The sections below start the same pieces by hand.
 
@@ -241,7 +246,7 @@ This works with Turnstile on. `run` passes `TURNSTILE_SITE_KEY` from `.env` to t
 | Next.js dashboard | `web-dashboard/` | 3000 | Node.js 20+ |
 | Rust firewall daemon | `daemon-rust/` | none (connects out to `/ws/firewall`) | Rust stable, Linux, root for real enforcement |
 | Cloudflare tunnel (demo only) | `cloudflared/` | none | `cloudflared`, a domain in Cloudflare |
-| Android app | `mobile-android/` | n/a | JDK 17–21, Android SDK; `./gradlew` (Gradle 8.10.2). Builds; not yet connected to the backend or tested on a device |
+| Android app (B2C) | `mobile-android/` | n/a | JDK 17–21 (`JAVA_HOME`), Android SDK; `./gradlew` (Gradle 8.10.2). Talks to the API on :8080 (`http://10.0.2.2:8080` from the emulator) |
 
 Open the dashboard at **http://localhost:3000**. Everything below `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` is proxied to Spring, so you never browse to :8080.
 
@@ -379,6 +384,18 @@ Gmail needs your own Google OAuth client. Without one, the backend has no client
 | Back on Settings with "Enable the Gmail API, then connect again" | Sign-in worked, but the Gmail API is disabled in the client's project | **APIs & Services → Library → Gmail API → Enable** (step 1), wait a few minutes, connect again |
 | Back on Settings with "Gmail was not connected" | Consent was cancelled, or Google returned no refresh token | Try again; remove Obsidian under myaccount.google.com → Security → Third-party connections first if it keeps failing |
 
+### 6b. Android app (B2C)
+```sh
+cd backend-spring && gradle bootTestRun          # API on :8080; sign-up codes are printed to this log
+cd mobile-android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew installDebug
+```
+The debug build talks to `http://10.0.2.2:8080`, which is your computer as seen from the Android emulator. On a phone, set the server on the sign-in screen (**Change**) to the public tunnel address; plain `http` only works for `10.0.2.2` and `localhost` (use `adb reverse tcp:8080 tcp:8080` for a USB phone). The seeded B2C account is `sam.ortiz@mail.example` with the demo password.
+
+- **Email codes.** Without `SMTP_*` in `.env`, `gradle bootTestRun` logs each code (`VERIFY_EMAIL code for … is 123456`); other servers refuse email sign-up until SMTP is set. A Gmail account works: turn on 2-Step Verification, create an app password, and set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USERNAME` and `SMTP_PASSWORD`.
+- **Google sign-in** reuses `GMAIL_CLIENT_ID` as the server client ID. In the same Google Cloud project, under **APIs & Services → Credentials**, create an OAuth client of type **Android** with package name `com.obsidian.mobile` and the SHA-1 of the signing key (`keytool -list -v -keystore ~/.android/debug.keystore -storepass android` for debug builds). Needs Google Play on the device.
+- **Turning everything on.** Home lists what's missing and opens the right system screen for each: notification access, notifications, contacts, the VPN consent for the firewall, and the default browser. When all seven are on, the app shows "Your phone is protected".
+- **Schema.** The B2C tables are in `db/init.sql`, which only runs on an empty volume: run `scripts/reset-demo.sh` once for an existing Docker database (`gradle bootTestRun` always starts fresh).
+
 ### 7. Public demo through a named tunnel
 ```sh
 cloudflared tunnel create obsidian                      # writes cloudflared/obsidian.json (gitignored)
@@ -439,7 +456,7 @@ What each target does:
 
 | Target | Tests | Build | Needs |
 | --- | --- | --- | --- |
-| `backend` | `gradle test`: 256 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `backend` | `gradle test`: 268 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
 
@@ -507,6 +524,8 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | `WS /ws/dashboard` | Live feed for the SOC dashboard |
 | `POST /api/v1/webhooks/github` | Code Guard webhook (signature-verified): push, pull request, release |
 | `GET /api/v1/code/findings` | List Code Guard findings for the organization |
+| `GET /api/v1/consumer-reports` | Admin queue of B2C reports waiting for approval |
+| `/api/b2c/v1/*` | The Android app's own API: sign-up, scans, Activity, rules, the firewall blocklist, reports |
 | `POST /api/v1/code/findings/{id}/status` | Mark a finding as rotated or a false positive |
 
 The request and response payloads are in [`docs/protocol.md`](docs/protocol.md).
@@ -520,6 +539,7 @@ The request and response payloads are in [`docs/protocol.md`](docs/protocol.md).
 - **VirusTotal's free tier** allows 4 requests/min and 500/day. Verdicts are cached for 24 hours, crowd reports are checked first, and anything unresolved is shown as `PENDING`.
 - **SIM change detection** detects a different SIM in *this* device. It doesn't by itself stop a carrier-side SIM swap.
 - **Mobile scanning is links only.** Notifications don't include attachments.
+- **The phone firewall only sees DNS.** Android doesn't let an app see other apps' incoming connections, and lookups over Private DNS ("hostname" mode) or a browser's own secure DNS go around it. The app warns when Private DNS would bypass it.
 - **Code Guard can't un-leak a key.** Once a key is pushed, clones and forks already have it. Code Guard detects it within seconds and drives rotation, but it can't stop the push on github.com, because blocking a push before it lands requires pre-receive hooks.
 
 ---
@@ -527,7 +547,6 @@ The request and response payloads are in [`docs/protocol.md`](docs/protocol.md).
 ## Roadmap
 
 - Windows (`netsh`) and macOS (`pfctl`) daemons
-- Android DNS/VPN filtering mode
 - Device posture checks (SIM, biometrics and heartbeat gating session access)
 - Fleet management
 - Organization-wide Google Workspace scanning

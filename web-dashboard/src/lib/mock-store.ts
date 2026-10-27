@@ -6,9 +6,11 @@
 import type {
   BypassRequest,
   CodeFinding,
+  ConsumerReportQueueItem,
   DashboardEvent,
   EndpointAgent,
   GmailConnection,
+  IndicatorType,
   RegisteredAgent,
   ReportRequest,
   ScanLog,
@@ -304,6 +306,47 @@ export function subscribe(listener: Listener): () => void {
   };
 }
 
+let consumerReports: ConsumerReportQueueItem[] = [
+  {
+    indicatorType: "DOMAIN",
+    indicatorValue: "parcel-redelivery-fee.example",
+    threatCategory: "PHISHING",
+    status: "WAITING",
+    protectedDomain: false,
+    reporters: 2,
+    reportersNeeded: 3,
+    notes: ["Text said my parcel is held and asked for a 1.99 fee"],
+    firstReportedAt: ago(140),
+    lastReportedAt: ago(35),
+  },
+  {
+    indicatorType: "URL",
+    indicatorValue: "https://docs.google.com/forms/d/e/1faipqlsd-example/viewform",
+    threatCategory: "PHISHING",
+    status: "PROTECTED",
+    protectedDomain: false,
+    reporters: 1,
+    reportersNeeded: 3,
+    notes: ["Form asks for my bank login"],
+    firstReportedAt: ago(52),
+    lastReportedAt: ago(52),
+  },
+  {
+    indicatorType: "DOMAIN",
+    indicatorValue: "accounts.google.com",
+    threatCategory: "MALICIOUS",
+    status: "PROTECTED",
+    protectedDomain: true,
+    reporters: 1,
+    reportersNeeded: 3,
+    notes: [],
+    firstReportedAt: ago(12),
+    lastReportedAt: ago(12),
+  },
+];
+
+let protectedDomains: string[] = ["aster.example"];
+
 // ---- API surface ---------------------------------------------------------------
 
 const delay = <T,>(value: T, ms = 250) =>
@@ -342,6 +385,39 @@ export const mockApi = {
   setCodeFindingStatus(id: string, status: "REVOKED" | "FALSE_POSITIVE") {
     codeFindings = codeFindings.map((f) => (f.id === id ? { ...f, status } : f));
     return delay(codeFindings.find((f) => f.id === id)!);
+  },
+
+  listConsumerReports: () => delay(consumerReports),
+  approveConsumerReport(indicatorType: IndicatorType, indicatorValue: string): Promise<ThreatRule> {
+    const rule: ThreatRule = {
+      id: id(),
+      orgId: null,
+      userId: null,
+      indicatorType,
+      indicatorValue,
+      listType: "BLACKLIST",
+      threatCategory: consumerReports.find((r) => r.indicatorValue === indicatorValue)?.threatCategory ?? "MALICIOUS",
+      source: "USER_REPORT",
+      confidenceScore: 100,
+      expiresAt: null,
+      updatedAt: new Date().toISOString(),
+    };
+    consumerReports = consumerReports.filter((r) => r.indicatorType !== indicatorType || r.indicatorValue !== indicatorValue);
+    rules = [rule, ...rules];
+    return delay(rule);
+  },
+  dismissConsumerReport(indicatorType: IndicatorType, indicatorValue: string) {
+    consumerReports = consumerReports.filter((r) => r.indicatorType !== indicatorType || r.indicatorValue !== indicatorValue);
+    return delay(undefined);
+  },
+  listProtectedDomains: () => delay(protectedDomains),
+  addProtectedDomain(domain: string) {
+    protectedDomains = [...new Set([...protectedDomains, domain.trim().toLowerCase()])].sort();
+    return delay(protectedDomains);
+  },
+  removeProtectedDomain(domain: string) {
+    protectedDomains = protectedDomains.filter((d) => d !== domain);
+    return delay(undefined);
   },
 
   registerAgent(hostname: string): Promise<RegisteredAgent> {

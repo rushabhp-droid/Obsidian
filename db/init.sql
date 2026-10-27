@@ -162,3 +162,68 @@ CREATE TABLE scanned_emails (
 );
 
 CREATE INDEX idx_scanned_emails_user ON scanned_emails (user_id, received_at DESC);
+
+-- 9. B2C consumer app (Android, /api/b2c/v1). Consumer accounts are separate from
+-- users: a consumer can't sign in to the dashboard and a user token can't call
+-- /api/b2c. A consumer's own rules live in consumer_rules, never threat_rules;
+-- only a promoted consumer report reaches threat_rules, as a global rule.
+CREATE TABLE consumers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,          -- stored lowercase
+    display_name VARCHAR(120) NOT NULL,          -- required at sign-up
+    password_hash TEXT NULL,                     -- Argon2id; NULL for Google-only accounts
+    google_subject VARCHAR(255) UNIQUE NULL,     -- the Google ID token's "sub"
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- A consumer's personal blacklist / whitelist (the phone firewall and link checks).
+CREATE TABLE consumer_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    consumer_id UUID NOT NULL REFERENCES consumers(id) ON DELETE CASCADE,
+    indicator_type VARCHAR(20) NOT NULL,         -- same values and normalization as threat_rules
+    indicator_value TEXT NOT NULL,
+    list_type VARCHAR(12) NOT NULL,              -- 'BLACKLIST' or 'WHITELIST'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (consumer_id, indicator_type, indicator_value)
+);
+
+-- One row per (consumer, indicator) report. Promotion to a global threat_rules
+-- row needs VirusTotal to flag it, 3 verified reporters in 7 days, or an admin.
+CREATE TABLE consumer_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    consumer_id UUID NOT NULL REFERENCES consumers(id) ON DELETE CASCADE,
+    indicator_type VARCHAR(20) NOT NULL,
+    indicator_value TEXT NOT NULL,
+    threat_category VARCHAR(30) NOT NULL,        -- 'SPAM', 'PHISHING', 'MALWARE', 'MALICIOUS'
+    note VARCHAR(500) NULL,
+    status VARCHAR(20) NOT NULL,                 -- 'WAITING', 'PROTECTED', 'BLOCKED', 'DISMISSED'
+    rule_id UUID NULL REFERENCES threat_rules(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (consumer_id, indicator_type, indicator_value)
+);
+
+CREATE INDEX idx_consumer_reports_indicator ON consumer_reports (indicator_type, indicator_value, status);
+
+-- What the Activity tab lists: scans, link checks, message alerts and reports.
+CREATE TABLE consumer_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    consumer_id UUID NOT NULL REFERENCES consumers(id) ON DELETE CASCADE,
+    kind VARCHAR(20) NOT NULL,                   -- 'URL_SCAN', 'FILE_SCAN', 'LINK_OPENED', 'MESSAGE', 'REPORT'
+    subject TEXT NOT NULL,                       -- the URL, file name, sender or reported indicator
+    detail TEXT NULL,                            -- e.g. the app that showed the message; never message text
+    verdict VARCHAR(20) NOT NULL,                -- 'MALICIOUS', 'SUSPICIOUS', 'PENDING', 'CLEAN', 'BYPASSED'
+    threat_category VARCHAR(30) NULL,
+    risk_score INT NULL,                         -- 0-100; NULL while PENDING
+    vt_detections INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_consumer_activity ON consumer_activity (consumer_id, created_at DESC);
+
+-- Domains admins added on top of the bundled list (backend-spring/src/main/resources/b2c).
+CREATE TABLE protected_domains (
+    domain VARCHAR(253) PRIMARY KEY,
+    added_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);

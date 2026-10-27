@@ -49,7 +49,7 @@ class EnvExampleTest {
 
     @Test
     void secretsAreBlankInTheExample() throws IOException {
-        assertThat(settings()).filteredOn(line -> line.matches("(APP_ENC_KEY|VT_API_KEY|TURNSTILE_SECRET_KEY|GMAIL_CLIENT_SECRET|GITHUB_WEBHOOK_SECRET)=.*"))
+        assertThat(settings()).filteredOn(line -> line.matches("(APP_ENC_KEY|VT_API_KEY|TURNSTILE_SECRET_KEY|GMAIL_CLIENT_SECRET|GITHUB_WEBHOOK_SECRET|SMTP_PASSWORD)=.*"))
                 .allSatisfy(line -> assertThat(line).endsWith("="));
     }
 }

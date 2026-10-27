@@ -97,6 +97,35 @@ public class VirusTotalClient {
         }
     }
 
+    /** A domain's reputation (B2C reports). Unknown domains stay PENDING; nothing is submitted. */
+    public VtVerdict lookupDomain(String domain) {
+        return lookupReport("domain:" + domain, "/domains/{id}", domain);
+    }
+
+    /** An IP address's reputation (B2C reports). */
+    public VtVerdict lookupIp(String ip) {
+        return lookupReport("ip:" + ip, "/ip_addresses/{id}", ip);
+    }
+
+    private VtVerdict lookupReport(String cacheId, String path, String id) {
+        Optional<VtVerdict> cached = cache.get(cacheId);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        if (!config.enabled() || !limiter.tryAcquire()) {
+            return VtVerdict.pending();
+        }
+        try {
+            JsonNode report = http.get().uri(path, id).retrieve().body(JsonNode.class);
+            return remember(cacheId, fromStats(report.path("data").path("attributes").path("last_analysis_stats"),
+                    ThreatCategory.MALICIOUS));
+        } catch (HttpClientErrorException.NotFound e) {
+            return VtVerdict.pending();
+        } catch (RestClientException e) {
+            return failed("GET " + path, e);
+        }
+    }
+
     private VtVerdict submit(String id, String url) {
         if (!limiter.tryAcquire()) {
             return VtVerdict.pending();

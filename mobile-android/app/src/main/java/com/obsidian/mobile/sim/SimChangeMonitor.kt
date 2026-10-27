@@ -6,12 +6,12 @@ import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
-import com.obsidian.mobile.auth.TokenStorage
+import com.obsidian.mobile.data.SessionStore
 import java.security.MessageDigest
 
 class SimChangeMonitor(
     private val context: Context,
-    private val tokenStorage: TokenStorage,
+    private val tokenStorage: SessionStore,
     private val onSimAlert: (String) -> Unit
 ) {
 
@@ -86,7 +86,7 @@ class SimChangeMonitor(
     private fun triggerSimAlert(reason: String) {
         Log.e("SimChangeMonitor", "SECURITY ALERT: $reason")
         // Invalidate session
-        tokenStorage.bearerToken = null
+        tokenStorage.signOut()
         onSimAlert(reason)
     }
 

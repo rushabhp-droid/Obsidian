@@ -7,6 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.obsidian.b2c.Consumer;
+import com.obsidian.b2c.ConsumerReport;
+import com.obsidian.b2c.ConsumerReportService;
+import com.obsidian.b2c.ConsumerRepository;
 import com.obsidian.model.AuthCheck;
 import com.obsidian.model.Channel;
 import com.obsidian.model.IndicatorType;
@@ -45,6 +49,8 @@ class ApiContractTest extends IntegrationTest {
     @Autowired TestAccounts accounts;
     @Autowired ObjectMapper mapper;
     @Autowired ScanService scans;
+    @Autowired ConsumerRepository consumers;
+    @Autowired ConsumerReportService consumerReports;
 
     final TypesTs types = TypesTs.load();
     Team team;
@@ -164,6 +170,17 @@ class ApiContractTest extends IntegrationTest {
         assertThat(types.union("CodeFindingType")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Type.values()));
         assertThat(types.union("CodeSeverity")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Severity.values()));
         assertThat(types.union("CodeFindingStatus")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Status.values()));
+    }
+
+    @Test
+    void consumerReportQueueMatches() throws Exception {
+        Consumer consumer = consumers.save(new Consumer("contract-" + java.util.UUID.randomUUID() + "@mail.example", "Sam"));
+        consumerReports.report(consumer, IndicatorType.DOMAIN, "contract-" + java.util.UUID.randomUUID().toString()
+                .substring(0, 8) + ".example", ThreatCategory.PHISHING, "Fake parcel text");
+
+        JsonNode queue = json(get("/api/v1/consumer-reports"));
+        assertThat(keys(queue.get(0))).isEqualTo(types.fields("ConsumerReportQueueItem"));
+        assertThat(types.union("ConsumerReportStatus")).isEqualTo(names(ConsumerReport.Status.values()));
     }
 
     @Test

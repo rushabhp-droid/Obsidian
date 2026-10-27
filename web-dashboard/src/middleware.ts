@@ -20,6 +20,7 @@ export const config = {
     "/agents/:path*",
     "/code/:path*",
     "/firewall/:path*",
+    "/consumer-reports/:path*",
     "/settings/:path*",
   ],
 };

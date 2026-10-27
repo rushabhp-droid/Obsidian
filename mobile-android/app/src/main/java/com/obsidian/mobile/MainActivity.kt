@@ -1,65 +1,60 @@
 package com.obsidian.mobile
 
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.fragment.app.FragmentActivity
-import com.obsidian.mobile.auth.BiometricAuthManager
-import com.obsidian.mobile.auth.TokenStorage
-import com.obsidian.mobile.notify.ThreatAlertManager
-import com.obsidian.mobile.sim.SimChangeMonitor
-import com.obsidian.mobile.theme.ObsidianMobileTheme
-import com.obsidian.mobile.ui.ObsidianApp
+import com.obsidian.mobile.firewall.FirewallVpnService
+import com.obsidian.mobile.theme.ObsidianTheme
+import com.obsidian.mobile.ui.MainTab
+import com.obsidian.mobile.ui.ObsidianRoot
 
+/** The app's one screen host. A FragmentActivity because BiometricPrompt needs one. */
 class MainActivity : FragmentActivity() {
 
-    private val tokenStorage by lazy { TokenStorage(this) }
-    private val biometricAuthManager by lazy { BiometricAuthManager(this) }
-    private val threatAlertManager by lazy { ThreatAlertManager(this) }
-    private val simChangeMonitor by lazy {
-        SimChangeMonitor(this, tokenStorage) { reason ->
-            runOnUiThread {
-                threatAlertManager.showSimChangeAlert(reason)
-                Toast.makeText(this, "SECURITY ALERT: $reason", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
+    /** A tab another part of the app asked for (a threat notification, the firewall notification). */
+    private val requestedTab = mutableStateOf<MainTab?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        enableEdgeToEdge()
+        readTab(intent)
+        resumeFirewall()
         setContent {
-            ObsidianMobileTheme {
-                ObsidianApp(
-                    tokenStorage = tokenStorage,
-                    onTriggerBiometric = { onSuccess ->
-                        if (biometricAuthManager.canAuthenticate()) {
-                            biometricAuthManager.promptBiometric(
-                                activity = this@MainActivity,
-                                title = "Obsidian Security Lock",
-                                subtitle = "Verify your identity to access threat controls",
-                                onSuccess = onSuccess,
-                                onError = { errMsg ->
-                                    Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        } else {
-                            // Device has no biometrics/credential setup: allow fallback unlock for testing
-                            onSuccess()
-                        }
-                    }
+            val settings by AppGraph.session.settings.collectAsState()
+            ObsidianTheme(settings.theme, settings.darkMode) {
+                ObsidianRoot(
+                    activity = this,
+                    requestedTab = requestedTab.value,
+                    onTabHandled = { requestedTab.value = null },
                 )
             }
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        simChangeMonitor.startMonitoring()
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readTab(intent)
     }
 
-    override fun onPause() {
-        super.onPause()
-        simChangeMonitor.stopMonitoring()
+    private fun readTab(intent: Intent?) {
+        intent?.getStringExtra(EXTRA_TAB)?.let { name -> requestedTab.value = MainTab.entries.firstOrNull { it.name == name } }
+    }
+
+    /** The firewall was on when the app last ran (or the phone restarted): turn it back on if Android still allows it. */
+    private fun resumeFirewall() {
+        val session = AppGraph.session
+        if (session.isSignedIn && session.settings.value.firewallWanted && !FirewallVpnService.running.value &&
+            FirewallVpnService.consentIntent(this) == null) {
+            FirewallVpnService.start(this)
+        }
+    }
+
+    companion object {
+        const val EXTRA_TAB = "com.obsidian.mobile.TAB"
     }
 }

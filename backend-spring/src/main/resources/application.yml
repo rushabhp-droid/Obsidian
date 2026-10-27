@@ -79,6 +79,25 @@ obsidian:
     tool-timeout: 120s
     max-archive-bytes: 209715200   # 200 MiB repository snapshot
     max-asset-bytes: 104857600     # 100 MiB per release asset
+  b2c:
+    # The Android app (/api/b2c/v1). Google sign-in accepts ID tokens issued to this web client
+    # (the app asks Google for a token with it as the server client ID).
+    google-client-id: ${GMAIL_CLIENT_ID:}
+    # Print sign-up codes to the log instead of emailing them. Only DevServer (gradle bootTestRun)
+    # turns this on; a real deployment without SMTP refuses to send codes.
+    log-codes: false
+    code-ttl: 10m
+    resend-after: 45s
+    # A consumer report that VirusTotal doesn't flag becomes a global block after this many
+    # different verified consumers report it within report-window, or after an admin approves it.
+    reporters-to-block: 3
+    report-window: 7d
+    mail:
+      host: ${SMTP_HOST:}
+      port: ${SMTP_PORT:587}
+      username: ${SMTP_USERNAME:}
+      password: ${SMTP_PASSWORD:}
+      from: ${MAIL_FROM:}
   email:
     # "Verified official" needs SPF + DKIM + DMARC pass AND the sender's domain
     # (or a parent of it) on this list, or whitelisted by a rule.

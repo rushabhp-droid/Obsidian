@@ -124,6 +124,24 @@ export interface CodeFinding {
   createdAt: string;
 }
 
+/** Reports from the B2C Android app (/api/b2c/v1) that need an admin; GET /api/v1/consumer-reports. */
+export type ConsumerReportStatus = "WAITING" | "PROTECTED" | "BLOCKED" | "DISMISSED";
+
+export interface ConsumerReportQueueItem {
+  indicatorType: IndicatorType;
+  indicatorValue: string;
+  threatCategory: ThreatCategory;
+  status: ConsumerReportStatus;
+  /** A protected domain can't be approved for a global block. */
+  protectedDomain: boolean;
+  /** Verified consumers who reported it in the last 7 days. */
+  reporters: number;
+  reportersNeeded: number;
+  notes: string[];
+  firstReportedAt: string;
+  lastReportedAt: string;
+}
+
 /** Server → browser messages on /ws/dashboard. */
 export type DashboardEvent =
   | {

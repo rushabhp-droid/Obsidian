@@ -2,54 +2,53 @@ package com.obsidian.mobile.auth
 
 import android.content.Context
 import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 
+/**
+ * Fingerprint unlock (class 3 biometrics only). The app PIN is the fallback,
+ * so the prompt's negative button is "Use PIN" rather than the device screen lock.
+ */
 class BiometricAuthManager(private val context: Context) {
 
-    fun canAuthenticate(): Boolean {
-        val biometricManager = BiometricManager.from(context)
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        return biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
+    enum class Availability { READY, NOT_ENROLLED, UNAVAILABLE }
+
+    fun availability(): Availability = when (BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG)) {
+        BiometricManager.BIOMETRIC_SUCCESS -> Availability.READY
+        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> Availability.NOT_ENROLLED
+        else -> Availability.UNAVAILABLE
     }
 
-    fun promptBiometric(
+    /**
+     * [onFallback] runs when the user picks "Use PIN" or the sensor can't be used;
+     * a dismissed prompt calls nothing (the lock screen stays).
+     */
+    fun prompt(
         activity: FragmentActivity,
-        title: String = "Obsidian Security Lock",
-        subtitle: String = "Verify your identity to access threat controls",
+        title: String,
+        subtitle: String,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onFallback: (message: String?) -> Unit,
     ) {
-        val executor = ContextCompat.getMainExecutor(activity)
         val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                super.onAuthenticationSucceeded(result)
-                onSuccess()
-            }
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onSuccess()
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                super.onAuthenticationError(errorCode, errString)
-                onError(errString.toString())
-            }
-
-            override fun onAuthenticationFailed() {
-                super.onAuthenticationFailed()
-                onError("Authentication failed. Try again.")
+                when (errorCode) {
+                    BiometricPrompt.ERROR_USER_CANCELED, BiometricPrompt.ERROR_CANCELED -> Unit
+                    BiometricPrompt.ERROR_NEGATIVE_BUTTON -> onFallback(null)
+                    else -> onFallback(errString.toString())
+                }
             }
         }
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                        BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
+            .setAllowedAuthenticators(BIOMETRIC_STRONG)
+            .setNegativeButtonText("Use PIN")
             .build()
-
-        val biometricPrompt = BiometricPrompt(activity, executor, callback)
-        biometricPrompt.authenticate(promptInfo)
+        BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), callback).authenticate(info)
     }
 }

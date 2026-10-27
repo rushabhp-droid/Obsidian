@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Obsidian</string>
-    <string name="notification_listener_service_label">Obsidian Threat Interceptor</string>
-    <string name="notification_channel_alerts">Obsidian Threat Alerts</string>
-    <string name="notification_channel_alerts_desc">Alerts for detected malicious or phishing links in messages</string>
+    <string name="link_check_label">Obsidian link check</string>
+    <string name="notification_listener_service_label">Obsidian message checks</string>
+    <string name="notification_channel_alerts">Threat alerts</string>
+    <string name="notification_channel_alerts_desc">Scam and malicious links found in your messages</string>
+    <string name="notification_channel_firewall">Firewall</string>
+    <string name="notification_channel_firewall_desc">Shown while the firewall is on</string>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Google "G" mark for the sign-in button. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:fillColor="#FFC107" android:pathData="M43.6,20.5H42V20.4H24v7.2h11.3C33.7,32.1 29.3,35.2 24,35.2c-6.2,0 -11.2,-5 -11.2,-11.2S17.8,12.8 24,12.8c2.9,0 5.5,1.1 7.5,2.9l5.1,-5.1C33.4,7.6 28.9,5.6 24,5.6C13.8,5.6 5.6,13.8 5.6,24S13.8,42.4 24,42.4S42.4,34.2 42.4,24C42.4,22.8 42.3,21.6 42.1,20.5z" />
+    <path android:fillColor="#FF3D00" android:pathData="M7.7,15.4l5.9,4.3C15.2,15.8 19.3,12.8 24,12.8c2.9,0 5.5,1.1 7.5,2.9l5.1,-5.1C33.4,7.6 28.9,5.6 24,5.6C16.9,5.6 10.8,9.6 7.7,15.4z" />
+    <path android:fillColor="#4CAF50" android:pathData="M24,42.4c4.8,0 9.1,-1.8 12.4,-4.8l-5.7,-4.8C28.8,34.3 26.5,35.2 24,35.2c-5.3,0 -9.7,-3.4 -11.3,-8.1l-5.9,4.5C9.8,37.6 16.4,42.4 24,42.4z" />
+    <path android:fillColor="#1976D2" android:pathData="M43.6,20.5H42V20.4H24v7.2h11.3c-0.8,2.2 -2.2,4.1 -4.1,5.4l5.7,4.8C36.5,38.3 42.4,33.6 42.4,24C42.4,22.8 42.3,21.6 42.1,20.5z" />
+</vector>

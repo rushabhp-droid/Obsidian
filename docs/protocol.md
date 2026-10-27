@@ -1,7 +1,8 @@
 # Obsidian protocol
 
 The contract between Spring (`backend-spring`), the Rust daemon (`daemon-rust`), the web dashboard
-(`web-dashboard`) and the Android app (`mobile-android`). This file is the source of truth for shared HTTP, scan, and WebSocket message shapes.
+(`web-dashboard`) and the Android app (`mobile-android`). The dashboard and daemons are the B2B service
+on `/api/v1`; the Android app is the B2C service on its own API, [`/api/b2c/v1`](#b2c-app-api-apib2cv1). This file is the source of truth for shared HTTP, scan, and WebSocket message shapes.
 If a shape changes, update every consumer and its contract tests in the same change. Shared workflow rules are in [`AGENTS.md`](../AGENTS.md).
 
 - All JSON. Timestamps are ISO 8601 UTC strings (`2026-10-27T10:15:00Z`). IDs are UUID strings.
@@ -29,7 +30,8 @@ report its host as a `DOMAIN` (the web dashboard offers the link domain as its o
 | Client | How |
 | --- | --- |
 | Web | `__Host-session` cookie (`Secure; HttpOnly; Path=/; SameSite=Lax`, no `Domain`), from password or passkey login. Mutations send `X-XSRF-TOKEN` with the value of the `XSRF-TOKEN` cookie. |
-| Android | `Authorization: Bearer obm_<64 hex>` from `POST /api/v1/auth/login` with `"client": "MOBILE"`. Valid for 30 days. No CSRF header. |
+| Mobile client of `/api/v1` | `Authorization: Bearer obm_<64 hex>` from `POST /api/v1/auth/login` with `"client": "MOBILE"`. Valid for 30 days. No CSRF header. The Android app no longer uses this; it signs in on `/api/b2c/v1`. |
+| Android (B2C) | `Authorization: Bearer obc_<64 hex>` from `/api/b2c/v1/auth/*`. Valid for 30 days. Only works on `/api/b2c/**`, and `obm_` tokens and session cookies don't work there. |
 | Daemon | `Authorization: Bearer obs_<64 hex>` on the `/ws/firewall` handshake, from `POST /api/v1/agents`. |
 
 CSRF isn't checked on `POST /api/v1/auth/login`, `POST /api/v1/auth/register`,
@@ -281,15 +283,97 @@ release). Findings belong to the organization of `CODEGUARD_ORG_ADMIN_EMAIL`.
 - A secret's value is never stored, logged or sent. `secretFingerprint` is its SHA-256. A leaked key is
   compromised: the fix is rotating it, then marking the finding `REVOKED`.
 
+## B2C app API (`/api/b2c/v1`)
+
+The Android app's own API: a separate Spring Security filter chain on `/api/b2c/**` (stateless, `obc_`
+bearer tokens only, no cookies, no CSRF). Consumers are their own accounts (`consumers` table), not
+dashboard `users`. Errors are problem details with an extra `code` field the app can branch on
+(`INVALID_CREDENTIALS`, `EMAIL_NOT_VERIFIED`, `ACCOUNT_EXISTS`, `INVALID_CODE`, `TOO_SOON`,
+`EMAIL_NOT_CONFIGURED`, `GOOGLE_NOT_CONFIGURED`, `INVALID_GOOGLE_TOKEN`, …).
+
+### Sign-up and sign-in (no token needed)
+
+| Endpoint | Body → response |
+| --- | --- |
+| `GET /status` | → `{"server":"UP","database":"UP\|DOWN","cache":"UP\|DOWN","virusTotalConfigured":true,"googleSignInConfigured":true,"googleClientId":"…\|null","emailConfigured":true,"serverTime":"…"}` |
+| `POST /auth/register` | `{"name","email","password"}` (name required, password 10–128) → `202 {"email","expiresInSeconds":600}`. Emails a 6-digit code. A still-unverified account is refreshed; a verified one is `409 ACCOUNT_EXISTS`. |
+| `POST /auth/verify-email` | `{"email","code"}` → `SignedIn` |
+| `POST /auth/resend-code` | `{"email"}` → `202`. At most one code per 45 s (`429 TOO_SOON`). |
+| `POST /auth/login` | `{"email","password"}` → `SignedIn`, `401 INVALID_CREDENTIALS`, or `403 EMAIL_NOT_VERIFIED` (a new code is sent) |
+| `POST /auth/google` | `{"idToken"}` from Credential Manager, issued to the web OAuth client in `googleClientId` → `SignedIn`. Creates the account on first use, links an existing one by verified email, and drops the password of a linked account that was never verified. |
+| `POST /auth/forgot-password` | `{"email"}` → always `202` (doesn't reveal whether the account exists) |
+| `POST /auth/reset-password` | `{"email","code","newPassword"}` → `SignedIn` |
+| `POST /auth/logout` | revokes the bearer token → `204` |
+
+`SignedIn` is `{"token":"obc_…","expiresAt":"…","consumer":Profile}`; `Profile` (also `GET /me`) is
+`{"id","email","displayName","emailVerified","hasPassword","googleLinked","createdAt"}`.
+
+Codes are 6 digits, valid 10 minutes, single use, 5 wrong tries. Only a hash is kept (Redis
+`b2c:code:<purpose>:<email>`). They go out over SMTP (`SMTP_*` in `.env`). Without SMTP, `gradle
+bootTestRun` logs them instead (`obsidian.b2c.log-codes`); any other server answers `503 EMAIL_NOT_CONFIGURED`.
+
+### Protection (bearer token)
+
+| Endpoint | Body → response |
+| --- | --- |
+| `POST /scan/url` | `{"url","source":"URL_SCAN\|LINK_OPENED"}` → `ScanResult` |
+| `POST /scan/file` | `{"sha256","fileName","sizeBytes"}` → `ScanResult`. The app hashes the file; files are never uploaded. |
+| `POST /scan/message` | `{"app","sender","savedContact","text","urls"}` → `ScanResult`. `text` must be null for saved contacts (`400`); it's read for links and never stored. |
+| `GET /activity` | newest 500 `{"id","kind":"URL_SCAN\|FILE_SCAN\|LINK_OPENED\|MESSAGE\|REPORT","subject","detail","verdict","threatCategory","riskScore","vtDetections","createdAt"}` |
+| `GET /rules`, `POST /rules`, `DELETE /rules/{id}` | personal rules `{"id","indicatorType","indicatorValue","listType","createdAt"}`; `POST` takes `{"indicatorType","indicatorValue","listType"}` and moves an existing rule to the other list |
+| `GET /firewall/blocklist` | `{"domains":[…],"ips":[…],"personal":[Rule],"generatedAt"}`: the global `DOMAIN`/`IP` blacklist from `threat_rules` plus the consumer's rules, for the phone firewall |
+| `POST /reports` | `{"indicatorType","indicatorValue","threatCategory","note"}` → `Report` |
+| `GET /reports` | the consumer's reports, newest first |
+
+`ScanResult` is `{"verdict","category","riskScore","vtDetections","trusted","decidedBy","indicators":[IndicatorResult],"activityId"}`.
+An indicator is decided by, in order: the consumer's own whitelist then blacklist, global `threat_rules`
+(never organization rules), then VirusTotal. A URL is also matched by its host and a domain by its parent
+domains (unlike the B2B scanner, a rule for `example.com` covers `login.example.com`). `decidedBy` is
+`PERSONAL_RULE`, `SHARED_RULE`, `VIRUSTOTAL` or `NONE`. Unknown is `PENDING`, never `CLEAN`.
+`riskScore` is 0–100: a blocking rule is 95, VirusTotal MALICIOUS is 70 + 3 per engine (max 100),
+SUSPICIOUS 40 + 10 per engine (max 69), clean 0, and `null` while `PENDING`. A personal whitelist
+match is reported as `CLEAN` with `trusted: true` (stored as `BYPASSED` in Activity).
+
+### Consumer reports and global blocks
+
+`Report` is `{"id","indicatorType","indicatorValue","threatCategory","note","status","reporters","reportersNeeded","createdAt"}`.
+A report adds a personal blacklist rule at once. It becomes a global `threat_rules` blacklist row (no org,
+no user, written by `RuleService.blockGlobally`, audited as `CONSUMER_REPORT`, published to daemons) when:
+
+1. VirusTotal says `MALICIOUS` (3+ engines) for the URL, domain, IP or file (`source: VIRUSTOTAL`), or
+2. `reportersNeeded` (3) different consumers with a verified email reported it within 7 days, or
+3. an organization admin approves it in the dashboard.
+
+`status` is `WAITING`, `BLOCKED`, `DISMISSED`, or `PROTECTED`: a `DOMAIN` on the protected list never
+becomes a global block from a consumer report, not even with admin approval (block it in an organization's
+own rules instead), and a `URL` on a protected host needs an admin. The protected list is the top 1,000
+Tranco domains minus shared hosting (`backend-spring/src/main/resources/b2c`), plus admin additions;
+subdomains are covered unless they sit under a shared-hosting suffix such as `github.io`. Waiting reports
+are re-checked with VirusTotal every 10 minutes. Audit rows hold consumer ids, never consumer emails.
+
+Admin endpoints on `/api/v1` (dashboard session, organization admins only, otherwise `403`):
+
+| Endpoint | Body → response |
+| --- | --- |
+| `GET /api/v1/consumer-reports` | `[{"indicatorType","indicatorValue","threatCategory","status","protectedDomain","reporters","reportersNeeded","notes":[…],"firstReportedAt","lastReportedAt"}]` (`ConsumerReportQueueItem`), one per indicator, `WAITING` and `PROTECTED` only |
+| `POST /api/v1/consumer-reports/approve` | `{"indicatorType","indicatorValue"}` → the global `ThreatRule`; `409` for a protected domain |
+| `POST /api/v1/consumer-reports/dismiss` | `{"indicatorType","indicatorValue"}` → `204` |
+| `GET /api/v1/protected-domains` | admin-added domains |
+| `POST /api/v1/protected-domains` | `{"domain"}` → the updated list |
+| `DELETE /api/v1/protected-domains/{domain}` | `204` |
+
 ## Redis
 
 | Key / channel | Value |
 | --- | --- |
 | `channel:firewall:events` | `{"kind":"RULE\|SCAN\|HEARTBEAT\|CODE","orgId":"…\|null","userId":"…\|null","event":{…}}`, where `event` is the `/ws/dashboard` frame |
-| `vt:cache:<id>` | `{"verdict":"MALICIOUS","malicious":14,"suspicious":1,"category":"PHISHING","checkedAt":"…"}`, TTL 86,400 s. `<id>` is the lowercase SHA-256 for files, or the VirusTotal URL id (unpadded base64url of the URL exactly as scanned) |
+| `vt:cache:<id>` | `{"verdict":"MALICIOUS","malicious":14,"suspicious":1,"category":"PHISHING","checkedAt":"…"}`, TTL 86,400 s. `<id>` is the lowercase SHA-256 for files, the VirusTotal URL id (unpadded base64url of the URL exactly as scanned), `domain:<domain>` or `ip:<address>` |
 | `vt:pending:<url id>` | VirusTotal analysis id of a submitted URL, TTL 3,600 s |
 | `vt:notfound:<sha256>` | `1` when VirusTotal doesn't know a file, TTL 3,600 s |
 | `mobile:token:<sha256 of token>` | user id, TTL 30 days |
+| `b2c:token:<sha256 of token>` | consumer id, TTL 30 days |
+| `b2c:code:<verify_email\|reset_password>:<email>` | hash `{hash, attempts}` of a sign-up or reset code, TTL 10 min |
+| `b2c:code-sent:<purpose>:<email>` | resend cooldown, TTL 45 s |
 | `spring:session:sessions:<id>` | Spring Session (web), TTL 3,600 s |
 
 TTL bypasses live only in `threat_rules.expires_at`, never in Redis.

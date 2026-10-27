@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Compose draws everything; this only covers the window before the first frame. -->
     <style name="Theme.ObsidianMobile" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#FAFDFD</item>
-        <item name="android:navigationBarColor">#EEF5F4</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+
+    <!-- Link check: a card over whatever app the link came from. -->
+    <style name="Theme.ObsidianMobile.Translucent" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
     </style>
 </resources>

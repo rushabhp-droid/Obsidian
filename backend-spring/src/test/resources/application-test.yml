@@ -14,3 +14,7 @@ obsidian:
     # Long enough that the scheduled worker never fires during a test run;
     # tests call the worker directly.
     poll-interval: 1h
+  b2c:
+    google-client-id: test-google-client-id
+    mail:
+      host: ""
