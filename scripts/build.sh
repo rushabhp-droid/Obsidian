@@ -236,6 +236,21 @@ port_free() {
   ! ss -ltnH "sport = :$1" 2>/dev/null | grep -q . || fail "port $1 is already in use; stop whatever runs there first"
 }
 
+# token_accepted FILE: does the running backend know this agent token? A /ws/firewall handshake
+# answers 101 for a registered agent and 401 otherwise. The header goes through a 0600 file so the
+# token never shows up in `ps`.
+token_accepted() {
+  local header code
+  header=$(mktemp -p "$RUN" header.XXXXXX)
+  chmod 600 "$header"
+  printf 'Authorization: Bearer %s\n' "$(tr -d '[:space:]' < "$1")" > "$header"
+  code=$(curl -s -o /dev/null -m 2 -w '%{http_code}' -H @"$header" -H 'Connection: Upgrade' \
+      -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: b2JzaWRpYW4tY2hlY2stMQ==' \
+      http://localhost:8080/ws/firewall || true)
+  rm -f "$header"
+  [ "$code" = 101 ]
+}
+
 # Registers this machine as an agent with the demo admin and writes the token file.
 register_agent() {
   local token_file=$1 jar="$RUN/cookies.txt" xsrf host
@@ -299,8 +314,15 @@ run_all() {
     need cargo "install a Rust stable toolchain, or pass --no-daemon"
     [ -x "$ROOT/daemon-rust/target/release/daemon-rust" ] || (cd "$ROOT/daemon-rust" && cargo build --release --quiet)
     local token_file=${AGENT_TOKEN:-$RUN/agent.token}
-    if [ -z "$AGENT_TOKEN" ] && { [ "$PROD" = 0 ] || [ ! -s "$token_file" ]; }; then
-      register_agent "$token_file"   # dev data is fresh every run, so always register there
+    if [ -n "$AGENT_TOKEN" ]; then
+      token_accepted "$token_file" \
+        || fail "the backend doesn't know the agent token in $AGENT_TOKEN (401); register the agent again on Endpoint Security"
+    elif [ -s "$token_file" ] && token_accepted "$token_file"; then
+      echo "reusing the agent token in .run/agent.token"
+    else
+      # No token yet, or one from another database (dev data is in memory; reset-demo.sh wipes Docker).
+      register_agent "$token_file"
+      echo "registered this machine as a new agent (token in .run/agent.token)"
     fi
     if [ "$DAEMON_ROOT" = 1 ]; then
       step "starting daemon (sudo: real iptables + /etc/hosts)"

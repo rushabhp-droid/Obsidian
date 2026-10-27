@@ -176,7 +176,7 @@ What it does, in order:
 1. Checks that ports 8080 and 3000 are free.
 2. Starts the backend and waits until it answers. In dev mode its data is in memory and starts fresh every run.
 3. Starts the dashboard in `live` mode and waits for it.
-4. Signs in as the demo admin and registers this machine as an agent (dev mode registers on every run; `--prod` reuses `.run/agent.token`).
+4. Gives the daemon an agent token. It reuses `.run/agent.token` if the running backend still accepts it. Otherwise it signs in as the demo admin and registers this machine as a new agent. Dev data is in memory, so a dev run usually registers again; switching between dev and `--prod`, or running `scripts/reset-demo.sh`, also makes the old token invalid.
 5. Starts the daemon, which syncs and heartbeats every 10 s.
 6. Streams every module's output with a `[backend]`, `[web]` or `[daemon]` prefix.
 
@@ -379,7 +379,7 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | Dashboard shows "Sample data" | Set `NEXT_PUBLIC_API_MODE=live` in `web-dashboard/.env.local` and restart `npm run dev` |
 | Sign-in loops back to `/login` | Spring isn't running on `SPRING_ORIGIN` (default `http://localhost:8080`) |
 | Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
-| Daemon logs `refused the agent token (401)` | Register the agent again and replace the token file |
+| Daemon logs `refused the agent token (401)` | The token belongs to another database (dev vs `--prod`, or after `reset-demo.sh`). `build.sh run` now checks and re-registers by itself; for a daemon started by hand, register the agent again and replace the token file |
 | `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'`; a previous `build.sh run` stops with `kill "$(cat .run/run.pid)"` |
 | `build.sh run`: "couldn't sign in as … to register the daemon" | Turnstile is on or the seed isn't loaded: register an agent in the dashboard and pass `--agent-token FILE` |
 
