@@ -87,9 +87,9 @@ Open **`http://localhost:3300`** in any browser. The simulator includes:
   * Biometric Fingerprint lock/unlock trigger
 
 ### Option B: Android Studio / Gradle
-Open `mobile-android/` in Android Studio. There is no Gradle wrapper yet; a compatible Gradle 8.x installation can build it with:
+Open `mobile-android/` in Android Studio, or build with the Gradle wrapper (Gradle 8.10.2; needs JDK 17–21 and the Android SDK via `ANDROID_HOME` or `local.properties`):
 ```bash
 cd mobile-android
-gradle assembleDebug
+./gradlew assembleDebug testDebugUnitTest   # APK in app/build/outputs/apk/debug/
 ```
-The Android project has not been built or integration-tested yet; see the P0 items in [`../TODO.md`](../TODO.md). Deploy a verified APK to an Android 8.0+ (API 26+) phone or emulator. Grant **Notification Listener** permission to enable live WhatsApp and SMS interception.
+Use the wrapper rather than a system Gradle: AGP 8.7 doesn't run on Gradle 9. The app builds, but it is not yet connected to the backend or tested on a device; see the P0 items in [`../TODO.md`](../TODO.md). Install it on an Android 8.0+ (API 26+) phone or emulator. Grant **Notification Listener** access in system settings to enable live WhatsApp and SMS interception.

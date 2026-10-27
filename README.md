@@ -21,7 +21,7 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). A new tab requires sign-in after the last dashboard tab closes; reloading the same tab keeps the session. Field names are checked by `ApiContractTest`. |
 | Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
-| `mobile-android/` | Android source is present (merged from PR #3), but the app has not been built or verified against the backend. The current source has a compile mismatch and API contract gaps; see [`TODO.md`](TODO.md). The clickable prototype is `docs/prototype/android.html`. |
+| `mobile-android/` | Builds with its Gradle wrapper (`./gradlew assembleDebug testDebugUnitTest`), but it is not yet connected to the backend: there is no sign-in, and report, trust and rule changes stay on the phone. It has not been run on a device. The gaps are tracked in [`TODO.md`](TODO.md). The clickable prototype is `docs/prototype/android.html`. |
 
 Tests: backend 256/256 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
@@ -241,7 +241,7 @@ This works with Turnstile on. `run` passes `TURNSTILE_SITE_KEY` from `.env` to t
 | Next.js dashboard | `web-dashboard/` | 3000 | Node.js 20+ |
 | Rust firewall daemon | `daemon-rust/` | none (connects out to `/ws/firewall`) | Rust stable, Linux, root for real enforcement |
 | Cloudflare tunnel (demo only) | `cloudflared/` | none | `cloudflared`, a domain in Cloudflare |
-| Android app | `mobile-android/` | n/a | Android Studio/Gradle; source is present but not yet built or integration-tested |
+| Android app | `mobile-android/` | n/a | JDK 17–21, Android SDK; `./gradlew` (Gradle 8.10.2). Builds; not yet connected to the backend or tested on a device |
 
 Open the dashboard at **http://localhost:3000**. Everything below `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` is proxied to Spring, so you never browse to :8080.
 

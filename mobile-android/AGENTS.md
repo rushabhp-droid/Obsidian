@@ -7,3 +7,4 @@
 - Use the shared request and response shapes in `../docs/protocol.md`. The open Android/backend gaps are tracked in the P0 section of `../TODO.md`.
 - Do not log bearer tokens or message text in release builds. Use configurable API origins rather than a hard-coded public hostname.
 - Call the feature “SIM change detection.”
+- Run Android checks with `./gradlew assembleDebug testDebugUnitTest`; do not use a system Gradle 9.

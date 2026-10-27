@@ -23,7 +23,8 @@ enum class ThreatCategory {
     SAFE,
     SPAM,
     PHISHING,
-    MALWARE
+    MALWARE,
+    MALICIOUS
 }
 
 @Serializable
