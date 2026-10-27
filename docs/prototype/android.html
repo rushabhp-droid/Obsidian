@@ -1,0 +1,710 @@
+<title>Obsidian Android Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Roboto+Flex:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=block">
+<style>
+/* Layout: notes panel on the left, one phone frame on the right; stacks below 880px. */
+:root {
+  --page-bg: #e9eeed;
+  --page-fg: #161d1d;
+  --page-muted: #4a5554;
+  --page-line: #cdd6d5;
+  --page-accent: #00696d;
+  --page-raised: #f6f9f8;
+  --frame: #1b2121;
+  --font-ui: "Roboto Flex", Roboto, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg: #0b1010; --page-fg: #dde4e3; --page-muted: #9aa6a5; --page-line: #263030;
+    --page-accent: #4cd9dd; --page-raised: #131a1a; --frame: #2b3333; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page-bg: #0b1010; --page-fg: #dde4e3; --page-muted: #9aa6a5; --page-line: #263030;
+  --page-accent: #4cd9dd; --page-raised: #131a1a; --frame: #2b3333; color-scheme: dark;
+}
+
+/* Phone themes: Material 3 schemes from seed #00696D, plus a high contrast black variant. */
+.phone {
+  --primary: #00696d; --on-primary: #ffffff;
+  --primary-container: #9cf0f4; --on-primary-container: #002022;
+  --secondary-container: #cce8e7; --on-secondary-container: #051f20;
+  --tertiary: #4b607c; --tertiary-container: #d2e4ff; --on-tertiary-container: #041c35;
+  --error: #ba1a1a; --on-error: #ffffff; --error-container: #ffdad6; --on-error-container: #410002;
+  --surface: #f4fbfa; --surface-low: #eef5f4; --surface-mid: #e8efee; --surface-high: #e3eae9; --surface-highest: #dde4e3;
+  --on-surface: #161d1d; --on-surface-variant: #3f4948;
+  --outline: #6f7979; --outline-variant: #bec8c8;
+  --inverse-surface: #2b3231; --inverse-on-surface: #ecf2f1; --inverse-primary: #4cd9dd;
+  --container-border: transparent; --error-border: transparent; --scrim: rgba(0, 0, 0, 0.32);
+  --nav-ind: var(--secondary-container); --on-nav-ind: var(--on-secondary-container);
+  --body-weight: 400;
+}
+.phone[data-app-theme="dark"] {
+  --primary: #4cd9dd; --on-primary: #003739;
+  --primary-container: #004f52; --on-primary-container: #6ff6fc;
+  --secondary-container: #324b4b; --on-secondary-container: #cce8e7;
+  --tertiary: #b3c8e8; --tertiary-container: #334863; --on-tertiary-container: #d2e4ff;
+  --error: #ffb4ab; --on-error: #690005; --error-container: #93000a; --on-error-container: #ffdad6;
+  --surface: #0e1514; --surface-low: #161d1d; --surface-mid: #1a2121; --surface-high: #252b2b; --surface-highest: #2f3636;
+  --on-surface: #dde4e3; --on-surface-variant: #bec8c8;
+  --outline: #899392; --outline-variant: #3f4948;
+  --inverse-surface: #dde4e3; --inverse-on-surface: #2b3231; --inverse-primary: #00696d;
+  --container-border: transparent; --error-border: transparent; --scrim: rgba(0, 0, 0, 0.5);
+  --nav-ind: var(--secondary-container); --on-nav-ind: var(--on-secondary-container);
+}
+.phone[data-app-theme="amoled"] {
+  --primary: #5ce1e6; --on-primary: #000000;
+  --primary-container: #000000; --on-primary-container: #5ce1e6;
+  --secondary-container: #000000; --on-secondary-container: #ffffff;
+  --tertiary: #ffd166; --tertiary-container: #000000; --on-tertiary-container: #ffd166;
+  --error: #ff6b6b; --on-error: #000000; --error-container: #000000; --on-error-container: #ffffff;
+  --surface: #000000; --surface-low: #000000; --surface-mid: #000000; --surface-high: #000000; --surface-highest: #000000;
+  --on-surface: #ffffff; --on-surface-variant: #e0e0e0;
+  --outline: #bdbdbd; --outline-variant: rgba(255, 255, 255, 0.3);
+  --inverse-surface: #ffffff; --inverse-on-surface: #000000; --inverse-primary: #00696d;
+  --container-border: rgba(255, 255, 255, 0.4); --error-border: #ff6b6b; --scrim: rgba(0, 0, 0, 0.7);
+  --nav-ind: #5ce1e6; --on-nav-ind: #000000;
+  --body-weight: 500;
+}
+
+html, body { height: auto; }
+body {
+  background: var(--page-bg); color: var(--page-fg);
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap {
+  max-width: 1040px; margin: 0 auto; padding-block: 40px 56px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 48px; align-items: start;
+}
+@media (max-width: 880px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 24px 40px; } .stage { order: -1; } }
+
+/* ---------- notes panel ---------- */
+.notes { display: grid; gap: 28px; min-width: 0; }
+.notes h1 { font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.notes .lede { margin: 8px 0 0; color: var(--page-muted); max-width: 52ch; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--page-muted); margin: 0 0 10px; }
+.seg { display: inline-flex; border: 1px solid var(--page-line); border-radius: 8px; overflow: hidden; background: var(--page-raised); }
+.seg button {
+  font: 500 14px/1 var(--font-ui); color: var(--page-fg); background: transparent; border: 0;
+  padding: 11px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.seg button + button { border-left: 1px solid var(--page-line); }
+.seg button[aria-pressed="true"] { background: var(--page-accent); color: var(--page-bg); }
+.jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.jump button {
+  font: 500 13px/1 var(--font-ui); color: var(--page-fg); background: var(--page-raised);
+  border: 1px solid var(--page-line); border-radius: 8px; padding: 9px 12px; cursor: pointer;
+}
+.jump button:hover { border-color: var(--page-accent); }
+.try { margin: 0; padding-left: 18px; color: var(--page-muted); display: grid; gap: 6px; max-width: 52ch; }
+.try strong { color: var(--page-fg); font-weight: 500; }
+.fine { font-size: 13px; color: var(--page-muted); margin: 0; border-top: 1px solid var(--page-line); padding-top: 16px; max-width: 52ch; }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2px solid var(--page-accent); outline-offset: 2px; }
+
+/* ---------- phone frame ---------- */
+.stage { display: flex; justify-content: center; min-width: 0; }
+.phone {
+  width: 360px; max-width: 100%; height: 760px; border-radius: 44px; border: 10px solid var(--frame);
+  background: var(--surface); color: var(--on-surface); overflow: hidden; position: relative;
+  display: flex; flex-direction: column; font-family: var(--font-ui); font-weight: var(--body-weight);
+}
+@media (max-width: 400px) { .phone { height: 700px; border-width: 8px; border-radius: 36px; } }
+.phone button { font-family: var(--font-ui); }
+.ms {
+  font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal; font-size: 24px; line-height: 1;
+  display: inline-block; white-space: nowrap; direction: ltr; -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "opsz" 24; user-select: none; flex: none;
+}
+.ms.fill { font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+.ms.sm { font-size: 18px; }
+.ms.lg { font-size: 48px; }
+.status {
+  height: 32px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between;
+  font: 500 13px/1 var(--font-ui); color: var(--on-surface); flex: none;
+}
+.status .icons { display: flex; gap: 4px; }
+.status .ms { font-size: 16px; }
+.app { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.topbar { height: 56px; display: flex; align-items: center; gap: 4px; padding: 0 4px 0 16px; flex: none; }
+.topbar.with-back { padding-left: 4px; }
+.topbar h2 { font-size: 22px; font-weight: 400; margin: 0; flex: 1; padding-left: 4px; }
+.icon-btn {
+  width: 48px; height: 48px; border: 0; border-radius: 8px; background: transparent; color: var(--on-surface-variant);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+.body { flex: 1; overflow-y: auto; padding: 0 16px 16px; min-height: 0; scrollbar-width: thin; }
+.nav {
+  height: 80px; flex: none; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface-mid);
+  border-top: 1px solid var(--container-border); padding-top: 12px;
+}
+.nav button {
+  border: 0; background: transparent; color: var(--on-surface-variant); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; font: 500 12px/16px var(--font-ui);
+}
+.nav .ind { width: 64px; height: 32px; border-radius: 8px; display: grid; place-items: center; }
+.nav button[aria-current="page"] { color: var(--on-surface); }
+.nav button[aria-current="page"] .ind { background: var(--nav-ind); color: var(--on-nav-ind); }
+.handle { height: 20px; display: grid; place-items: center; background: var(--surface-mid); flex: none; }
+.handle::before { content: ""; width: 108px; height: 4px; border-radius: 2px; background: var(--on-surface); opacity: 0.6; }
+.handle.plain { background: var(--surface); }
+
+/* ---------- components ---------- */
+.card { border-radius: 12px; padding: 16px; display: flex; gap: 16px; border: 1px solid var(--container-border); }
+.card.filled { background: var(--surface-highest); }
+.card.outlined { background: var(--surface); border-color: var(--outline-variant); }
+.card h3 { font-size: 16px; font-weight: 500; line-height: 24px; margin: 0; }
+.card p { font-size: 14px; line-height: 20px; margin: 4px 0 0; color: var(--on-surface-variant); }
+.v-MALICIOUS { background: var(--error-container); color: var(--on-error-container); border: 2px solid var(--error-border); }
+.v-MALICIOUS p { color: var(--on-error-container); }
+.v-MALICIOUS .lead { color: var(--error); }
+.v-SUSPICIOUS { background: var(--tertiary-container); color: var(--on-tertiary-container); border: 1px solid var(--container-border); }
+.v-SUSPICIOUS p { color: var(--on-tertiary-container); }
+.v-SUSPICIOUS .lead { color: var(--tertiary); }
+.v-PENDING, .v-CLEAN { background: var(--surface-highest); border: 1px solid var(--container-border); }
+.lead { color: var(--primary); }
+.btn {
+  height: 40px; border-radius: 8px; padding: 0 24px; font: 500 14px/20px var(--font-ui); letter-spacing: 0.1px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 1px solid transparent;
+}
+.btn.filled { background: var(--primary); color: var(--on-primary); }
+.btn.danger { background: var(--error); color: var(--on-error); }
+.btn.outlined { background: transparent; color: var(--primary); border-color: var(--outline); }
+.btn.text { background: transparent; color: var(--primary); padding: 0 12px; }
+.btn.block { width: 100%; }
+.btn:hover { filter: brightness(1.06); }
+.section { font-size: 14px; font-weight: 500; line-height: 20px; margin: 24px 0 4px; color: var(--on-surface); }
+.section.primary { color: var(--primary); }
+.list { display: flex; flex-direction: column; }
+.li {
+  display: flex; align-items: center; gap: 16px; padding: 12px 0; min-height: 56px;
+  border-bottom: 1px solid var(--outline-variant); background: transparent; border-left: 0; border-right: 0; border-top: 0;
+  color: inherit; text-align: left; width: 100%; font: inherit;
+}
+button.li { cursor: pointer; }
+button.li:hover { background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
+.li:last-child { border-bottom: 0; }
+.li .lead { color: var(--on-surface-variant); }
+.li .txt { flex: 1; min-width: 0; }
+.li .over { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; color: var(--on-surface-variant); }
+.li .head { font-size: 16px; line-height: 24px; }
+.li .sup { font-size: 14px; line-height: 20px; color: var(--on-surface-variant); overflow-wrap: anywhere; }
+.mono { font-family: var(--font-mono); font-size: 13px; font-weight: 400; }
+.trail { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.trail .time { font-size: 11px; line-height: 16px; font-weight: 500; color: var(--on-surface-variant); }
+.tag { font-size: 11px; line-height: 16px; font-weight: 500; padding: 2px 6px; border-radius: 8px; border: 1px solid var(--container-border); }
+.tag.MALICIOUS { background: var(--error-container); color: var(--on-error-container); border-color: var(--error-border); }
+.tag.SUSPICIOUS { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.tag.PENDING, .tag.CLEAN { background: var(--surface-highest); color: var(--on-surface-variant); }
+.ic-MALICIOUS { color: var(--error) !important; }
+.ic-SUSPICIOUS { color: var(--tertiary) !important; }
+.ic-PENDING, .ic-CLEAN { color: var(--on-surface-variant) !important; }
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--secondary-container); color: var(--on-secondary-container);
+  display: grid; place-items: center; font-weight: 500; flex: none; border: 1px solid var(--container-border);
+}
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 8px; }
+.chip {
+  height: 32px; border-radius: 8px; padding: 0 12px; font: 500 14px/20px var(--font-ui); white-space: nowrap;
+  border: 1px solid var(--outline-variant); background: transparent; color: var(--on-surface-variant); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip[aria-pressed="true"] { background: var(--secondary-container); color: var(--on-secondary-container); border-color: var(--container-border); padding-left: 8px; }
+.sub { font-size: 12px; font-weight: 500; letter-spacing: 0.5px; color: var(--on-surface-variant); margin: 12px 0 0; }
+.info { border-radius: 12px; padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start; background: var(--surface-high); color: var(--on-surface-variant); font-size: 14px; line-height: 20px; border: 1px solid var(--container-border); margin-top: 16px; }
+.segm { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--outline); border-radius: 8px; overflow: hidden; margin-top: 4px; }
+.segm button { height: 40px; border: 0; background: transparent; color: var(--on-surface); font: 500 14px/20px var(--font-ui); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.segm button + button { border-left: 1px solid var(--outline); }
+.segm button[aria-pressed="true"] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.help { font-size: 12px; line-height: 16px; color: var(--on-surface-variant); margin: 8px 0 4px; }
+.caption { font-size: 12px; line-height: 16px; color: var(--on-surface-variant); text-align: center; margin: 8px 0 0; }
+.actions { display: grid; gap: 8px; margin-top: 24px; }
+.expires { color: var(--tertiary); display: inline-flex; align-items: center; gap: 2px; }
+.switch {
+  width: 52px; height: 32px; border-radius: 16px; border: 2px solid var(--outline); background: var(--surface-highest);
+  position: relative; flex: none; cursor: pointer; padding: 0;
+}
+.switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--outline); top: 6px; left: 6px; transition: left 120ms, width 120ms, height 120ms, top 120ms; }
+.switch[aria-checked="true"] { background: var(--primary); border-color: var(--primary); }
+.switch[aria-checked="true"]::after { width: 24px; height: 24px; top: 2px; left: 22px; background: var(--on-primary); }
+.empty { color: var(--on-surface-variant); font-size: 14px; margin: 8px 0; }
+
+/* lock */
+.lock { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 0 24px; text-align: center; }
+.lock h2 { font-size: 24px; font-weight: 400; margin: 4px 0 0; }
+.lock p { margin: 0 0 20px; color: var(--on-surface-variant); font-size: 14px; }
+
+/* snackbar + dialog */
+.snack {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; min-height: 48px; border-radius: 4px;
+  background: var(--inverse-surface); color: var(--inverse-on-surface); display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 16px; font-size: 14px; line-height: 20px; z-index: 5;
+}
+.snack span { flex: 1; }
+.snack button { border: 0; background: transparent; color: var(--inverse-primary); font: 500 14px/20px var(--font-ui); padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.scrim { position: absolute; inset: 0; background: var(--scrim); display: grid; place-items: center; padding: 24px; z-index: 10; }
+.dialog { background: var(--surface-high); color: var(--on-surface); border-radius: 28px; padding: 24px; width: 100%; border: 1px solid var(--container-border); }
+.dialog h3 { font-size: 24px; line-height: 32px; font-weight: 400; margin: 0 0 16px; }
+.dialog p, .dialog li { font-size: 14px; line-height: 20px; color: var(--on-surface-variant); margin: 0; }
+.dialog ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.field { width: 100%; height: 56px; border-radius: 4px; border: 1px solid var(--outline); background: transparent; color: var(--on-surface); padding: 0 16px; font: 400 15px var(--font-mono); }
+.field:focus { outline: 2px solid var(--primary); outline-offset: -2px; }
+.err { color: var(--error); font-size: 12px; margin: 6px 0 0; min-height: 16px; }
+.radio { display: flex; align-items: center; gap: 16px; padding: 10px 0; cursor: pointer; font-size: 16px; }
+.radio input { width: 20px; height: 20px; accent-color: var(--primary); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { .switch::after { transition: none; } }
+</style>
+
+<div class="wrap">
+  <section class="notes">
+    <div>
+      <h1>Obsidian Android</h1>
+      <p class="lede">Clickable prototype of the consumer app, built from stock Material 3 parts so it maps one to one onto Jetpack Compose. Everything inside the phone works: navigation, filters, report, trust, rules and settings.</p>
+    </div>
+
+    <div>
+      <p class="eyebrow" id="theme-label">Phone theme</p>
+      <div class="seg" role="group" aria-labelledby="theme-label">
+        <button type="button" id="t-light" data-theme-pick="light">Light</button>
+        <button type="button" id="t-dark" data-theme-pick="dark">Dark</button>
+        <button type="button" id="t-amoled" data-theme-pick="amoled">High contrast black</button>
+      </div>
+    </div>
+
+    <div>
+      <p class="eyebrow">Jump to a screen</p>
+      <ul class="jump">
+        <li><button type="button" data-jump="lock">Lock</button></li>
+        <li><button type="button" data-jump="setup">First run</button></li>
+        <li><button type="button" data-jump="home">Home</button></li>
+        <li><button type="button" data-jump="messages">Messages</button></li>
+        <li><button type="button" data-jump="check">Message check</button></li>
+        <li><button type="button" data-jump="reported">Report confirmed</button></li>
+        <li><button type="button" data-jump="blocked">Rules: Blocked</button></li>
+        <li><button type="button" data-jump="trusted">Rules: Trusted</button></li>
+        <li><button type="button" data-jump="prefs">Settings</button></li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="eyebrow">Try this</p>
+      <ol class="try">
+        <li><strong>Unlock</strong>, open the message from Rahul and tap Report as scam. The link moves to Rules, Blocked.</li>
+        <li>Open the SMS from the unknown number and <strong>trust</strong> the link. It appears under Rules, Trusted.</li>
+        <li>In Settings, turn off <strong>Notification access</strong> to see the first run state on Home.</li>
+        <li>Turn on <strong>High contrast black</strong> in Settings, or use the switch above.</li>
+      </ol>
+    </div>
+
+    <p class="fine">Sample data. Every name, number and link is an example. Checking states follow the product rules: a link that is still being checked is never shown as safe, and safe is never shown in green.</p>
+  </section>
+
+  <div class="stage">
+    <div class="phone" id="phone" data-app-theme="light" aria-label="Obsidian app prototype">
+      <div class="status"><span>14:35</span><span class="icons"><span class="ms" aria-hidden="true">signal_cellular_alt</span><span class="ms" aria-hidden="true">wifi</span><span class="ms" aria-hidden="true">battery_full</span></span></div>
+      <div class="app" id="app"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MESSAGES = [
+    { id: "m1", sender: "Rahul", saved: true, channel: "WhatsApp", day: "Today", time: "14:32", link: "secure-login-verify.co/kyc-update", verdict: "MALICIOUS", checkedBy: "Reported by other users and flagged by security scanners" },
+    { id: "m2", sender: "+91 98200 11234", saved: false, channel: "SMS", day: "Today", time: "12:05", link: "bit.ly/3xQa9", verdict: "SUSPICIOUS", checkedBy: "Flagged by 1 security scanner" },
+    { id: "m3", sender: "Delivery Updates", saved: false, channel: "SMS", day: "Today", time: "11:48", link: "track-parcel-info.net/ord/88213", verdict: "PENDING", checkedBy: "Waiting for security scanners" },
+    { id: "m4", sender: "Mom", saved: true, channel: "WhatsApp", day: "Yesterday", time: "21:10", link: "youtube.com/watch?v=4kq8Lz", verdict: "CLEAN", checkedBy: "No security scanner flagged this link" },
+    { id: "m5", sender: "Office Group", saved: true, channel: "WhatsApp", day: "Yesterday", time: "17:42", link: "docs.google.com/document/d/1Hx", verdict: "CLEAN", checkedBy: "No security scanner flagged this link" },
+    { id: "m6", sender: "HDFC-BK", saved: false, channel: "SMS", day: "Yesterday", time: "09:15", link: "hdfcbank.com/alerts", verdict: "CLEAN", checkedBy: "No security scanner flagged this link" }
+  ];
+
+  var VERDICT = {
+    MALICIOUS: { icon: "dangerous", tag: "Scam", title: "This link is a known scam", body: "We blocked it before it could open. Don't enter any passwords or one-time codes on this site." },
+    SUSPICIOUS: { icon: "warning", tag: "Suspicious", title: "This link looks suspicious", body: "A security scanner flagged it. Open it only if you were expecting this message." },
+    PENDING: { icon: "schedule", tag: "Checking", title: "Still checking this link", body: "We'll notify you when the check finishes. Until then, don't enter personal details on it." },
+    CLEAN: { icon: "check_circle", tag: "No threats found", title: "No known threats found", body: "No security scanner has flagged this link. Stay careful with links that ask for passwords or payments." }
+  };
+
+  var S = {
+    screen: "lock", notif: true, lockOn: true, filter: "all", sel: "m1", rulesTab: "blocked",
+    theme: "light", reported: {}, trusted: {}, dialog: null, snack: null,
+    blocked: [
+      { type: "link", v: "paypa1-support.net", src: "Reported by you · 25 Oct" },
+      { type: "phone", v: "+91 70451 88290", src: "Reported by you · 24 Oct" },
+      { type: "link", v: "free-recharge-offer.in", src: "Added by your organization · 20 Oct" }
+    ],
+    trustedList: [
+      { type: "link", v: "bank.example.in", src: "Trusted by you · 26 Oct" },
+      { type: "mail", v: "alerts@hdfcbank.net", src: "Trusted by you · 22 Oct" },
+      { type: "phone", v: "+91 22 6160 6161", src: "Trusted by you · 18 Oct" },
+      { type: "link", v: "intranet.example.com", src: "Trusted by you", expires: "Expires in 15 min" }
+    ]
+  };
+
+  var app = document.getElementById("app");
+  var phone = document.getElementById("phone");
+  var snackTimer = null;
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function ic(name, cls) { return '<span class="ms ' + (cls || "") + '" aria-hidden="true">' + name + "</span>"; }
+  function domain(link) { return link.split("/")[0]; }
+  function msg(id) { for (var i = 0; i < MESSAGES.length; i++) if (MESSAGES[i].id === id) return MESSAGES[i]; return MESSAGES[0]; }
+
+  /* ---------- shared chrome ---------- */
+  function topbar(title, opts) {
+    opts = opts || {};
+    var h = '<div class="topbar' + (opts.back ? " with-back" : "") + '">';
+    if (opts.back) h += '<button class="icon-btn" type="button" data-go="' + opts.back + '" aria-label="Back">' + ic("arrow_back") + "</button>";
+    h += "<h2>" + esc(title) + "</h2>";
+    (opts.actions || []).forEach(function (a) {
+      h += '<button class="icon-btn" type="button" data-act="' + a.act + '" aria-label="' + esc(a.label) + '">' + ic(a.icon) + "</button>";
+    });
+    return h + "</div>";
+  }
+  function nav(current) {
+    var items = [["home", "home", "Home"], ["messages", "chat_bubble", "Messages"], ["rules", "rule", "Rules"], ["prefs", "settings", "Settings"]];
+    var h = '<nav class="nav" aria-label="Main">';
+    items.forEach(function (it) {
+      var on = it[0] === current;
+      h += '<button type="button" data-go="' + it[0] + '"' + (on ? ' aria-current="page"' : "") + '><span class="ind">' + ic(it[1], on ? "fill" : "") + "</span>" + it[2] + "</button>";
+    });
+    return h + '</nav><div class="handle"></div>';
+  }
+  function msgRow(m, showTag) {
+    var v = effective(m);
+    var right = '<span class="trail"><span class="time">' + esc(m.day === "Today" ? m.time : (showTag ? "Yesterday" : m.time)) + "</span>";
+    right += showTag ? '<span class="tag ' + v + '">' + VERDICT[v].tag + "</span>" : ic(VERDICT[v].icon, "sm ic-" + v);
+    right += "</span>";
+    var lead = showTag
+      ? ic(VERDICT[v].icon, "ic-" + v)
+      : '<span class="avatar" aria-hidden="true">' + (m.saved && !/^\+/.test(m.sender) ? esc(m.sender.charAt(0)) : ic("person", "sm")) + "</span>";
+    return '<button type="button" class="li" data-open="' + m.id + '">' + lead +
+      '<span class="txt">' + (showTag ? "" : '<span class="over" style="display:block">' + m.channel + "</span>") +
+      '<span class="head" style="display:block">' + esc(m.sender) + '</span><span class="sup mono" style="display:block">' + esc(domain(m.link)) + "</span></span>" + right + "</button>";
+  }
+  function effective(m) { return S.reported[m.id] ? "MALICIOUS" : m.verdict; }
+
+  /* ---------- screens ---------- */
+  function lockScreen() {
+    return '<div class="lock">' + ic("lock", "lg lead") + "<h2>Obsidian</h2><p>Unlock to view your message checks.</p>" +
+      '<button class="btn filled" type="button" data-act="unlock">' + ic("fingerprint", "sm") + "Unlock</button></div>" +
+      '<div class="handle plain"></div>';
+  }
+
+  function homeScreen() {
+    var h = topbar("Obsidian", { actions: [{ act: "account", icon: "account_circle", label: "Account" }] }) + '<div class="body">';
+    if (!S.notif) {
+      h += '<div class="card outlined">' + ic("notifications_off", "lead") +
+        '<div><h3>Message checking is off</h3><p>Obsidian needs notification access to check links in WhatsApp and SMS. For saved contacts, only links are checked. Message text stays on this phone.</p>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:16px">' +
+        '<button class="btn filled" type="button" data-act="notif-on">Turn on message checking</button>' +
+        '<button class="btn text" type="button" data-act="what-access">Learn what we access</button></div></div></div>' +
+        '<p class="section">Recent checks</p><p class="empty">No messages checked yet.</p>';
+    } else {
+      h += '<div class="card filled">' + ic("verified_user", "lead") +
+        "<div><h3>Message checking is on</h3><p>Links in WhatsApp and SMS messages are checked as they arrive.</p></div></div>" +
+        '<p class="section">Recent checks</p><div class="list">' + MESSAGES.slice(0, 5).map(function (m) { return msgRow(m, true); }).join("") + "</div>" +
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn text" type="button" data-go="messages">See all messages</button></div>';
+    }
+    return h + "</div>" + nav("home");
+  }
+
+  function messagesScreen() {
+    var filters = [["all", "All"], ["MALICIOUS", "Scam"], ["SUSPICIOUS", "Suspicious"], ["PENDING", "Checking"]];
+    var h = topbar("Messages", { actions: [{ act: "search", icon: "search", label: "Search" }] }) + '<div class="body"><div class="chips" role="group" aria-label="Filter">';
+    filters.forEach(function (f) {
+      var on = S.filter === f[0];
+      h += '<button type="button" class="chip" data-filter="' + f[0] + '" aria-pressed="' + on + '">' + (on ? ic("check", "sm") : "") + f[1] + "</button>";
+    });
+    h += "</div>";
+    var shown = MESSAGES.filter(function (m) { return S.filter === "all" || effective(m) === S.filter; });
+    if (!S.notif) h += '<p class="empty">Turn on notification access in Settings to start checking messages.</p>';
+    else if (!shown.length) h += '<p class="empty">No messages match this filter.</p>';
+    else {
+      ["Today", "Yesterday"].forEach(function (d) {
+        var group = shown.filter(function (m) { return m.day === d; });
+        if (!group.length) return;
+        h += '<p class="sub">' + d + '</p><div class="list">' + group.map(function (m) { return msgRow(m, false); }).join("") + "</div>";
+      });
+    }
+    return h + "</div>" + nav("messages");
+  }
+
+  function checkScreen() {
+    var m = msg(S.sel), v = effective(m), V = VERDICT[v], d = domain(m.link);
+    var isReported = !!S.reported[m.id], isTrusted = !!S.trusted[m.id];
+    var h = topbar("Message check", { back: "messages", actions: [{ act: "more", icon: "more_vert", label: "More options" }] }) + '<div class="body">';
+    h += '<div class="card v-' + v + '">' + ic(V.icon, "lead") + "<div><h3>" + V.title + "</h3><p>" + V.body + "</p></div></div>";
+    if (isReported) {
+      h += '<div class="info" style="background:var(--surface-high)">' + ic("block", "ic-MALICIOUS") +
+        '<div><div style="color:var(--on-surface);font-size:16px;line-height:24px">Reported</div>This link is now blocked on this device and for your organization.</div></div>';
+    } else if (isTrusted) {
+      h += '<div class="info">' + ic("verified_user", "lead") +
+        '<div><div style="color:var(--on-surface);font-size:16px;line-height:24px">Trusted</div>This link is allowed on this device. Your organization can still block it.</div></div>';
+    }
+    h += '<p class="section">Details</p><div class="list">' +
+      row("From", esc(m.sender), (m.saved ? "Saved contact" : "Not in your contacts") + " · " + m.channel) +
+      row("Link", '<span class="mono">' + esc(m.link) + "</span>") +
+      row("Received", (m.day === "Today" ? "Today, " : "Yesterday, ") + m.time) +
+      (isReported ? "" : row("Checked by", esc(m.checkedBy))) + "</div>";
+    h += '<div class="info">' + ic("lock", "sm") + "<div>" + (m.saved
+      ? "Only the link was checked. Your message text stayed on this phone."
+      : "The message text and link were checked because this sender isn't in your contacts.") + "</div></div>";
+    h += '<div class="actions">';
+    if (isReported) {
+      h += '<button class="btn outlined block" type="button" data-act="undo-report">Undo report</button>';
+    } else if (isTrusted) {
+      h += '<button class="btn outlined block" type="button" data-act="untrust">Remove trust</button>';
+    } else if (v === "CLEAN") {
+      h += '<button class="btn outlined block" type="button" data-act="report">Report as scam</button>';
+    } else {
+      h += '<button class="btn danger block" type="button" data-act="report">Report as scam</button>' +
+        '<button class="btn outlined block" type="button" data-act="trust-ask">I trust this link</button>' +
+        '<p class="caption">Trusting this link allows <span class="mono">' + esc(d) + "</span> on this device.</p>";
+    }
+    return h + "</div></div>" + nav("messages");
+  }
+  function row(label, value, sup) {
+    return '<div class="li" style="min-height:0;padding:10px 0"><div class="txt"><span class="over" style="display:block">' + label +
+      '</span><span class="head" style="display:block;overflow-wrap:anywhere">' + value + "</span>" +
+      (sup ? '<span class="sup" style="display:block">' + sup + "</span>" : "") + "</div></div>";
+  }
+
+  function rulesScreen() {
+    var b = S.rulesTab === "blocked", list = b ? S.blocked : S.trustedList;
+    var h = topbar("Rules", { actions: [{ act: "add-rule", icon: "add", label: "Add a rule" }] }) + '<div class="body">' +
+      '<div class="segm" role="group" aria-label="Rule list">' +
+      '<button type="button" data-tab="blocked" aria-pressed="' + b + '">' + (b ? ic("check", "sm") : "") + "Blocked</button>" +
+      '<button type="button" data-tab="trusted" aria-pressed="' + !b + '">' + (!b ? ic("check", "sm") : "") + "Trusted</button></div>" +
+      '<p class="help">' + (b
+        ? "Blocked links and senders are stopped on this device and reported to your organization."
+        : "Trusted links and senders are never blocked on this device. Your organization can still block them.") + "</p>";
+    if (!list.length) h += '<p class="empty">' + (b ? "Nothing blocked yet. Report a message to add it here." : "Nothing trusted yet.") + "</p>";
+    h += '<div class="list">';
+    list.forEach(function (r, i) {
+      var sup = esc(r.src) + (r.expires ? ' · <span class="expires">' + ic("timer", "sm") + esc(r.expires) + "</span>" : "");
+      h += '<div class="li">' + ic(r.type, "lead") + '<div class="txt"><span class="head mono" style="display:block;font-size:14px;overflow-wrap:anywhere">' + esc(r.v) +
+        '</span><span class="sup" style="display:block">' + sup + "</span></div>" +
+        '<button class="icon-btn" type="button" data-del="' + i + '" aria-label="Remove ' + esc(r.v) + '">' + ic("delete") + "</button></div>";
+    });
+    return h + "</div></div>" + nav("rules");
+  }
+
+  function prefsScreen() {
+    var themeName = { light: "Light", dark: "Dark", amoled: "High contrast black" }[S.theme];
+    function sw(id, on, label) { return '<button type="button" class="switch" role="switch" id="' + id + '" aria-checked="' + on + '" aria-label="' + label + '" data-switch="' + id + '"></button>'; }
+    function item(icon, head, sup, trail, act) {
+      var tag = act ? 'button type="button" data-act="' + act + '"' : "div";
+      return "<" + tag + ' class="li">' + ic(icon, "lead") + '<span class="txt"><span class="head" style="display:block">' + head + "</span>" +
+        (sup ? '<span class="sup" style="display:block">' + sup + "</span>" : "") + "</span>" + (trail || "") + "</" + (act ? "button" : "div") + ">";
+    }
+    var h = topbar("Settings") + '<div class="body">' +
+      '<p class="section primary" style="margin-top:8px">Protection</p><div class="list">' +
+      item("notifications", "Notification access", S.notif ? "On" : "Off", sw("sw-notif", S.notif, "Notification access")) +
+      item("fingerprint", "Lock with fingerprint", "Required to open the app and edit rules", sw("sw-lock", S.lockOn, "Lock with fingerprint")) +
+      '</div><p class="section primary">Appearance</p><div class="list">' +
+      item("dark_mode", "Theme", themeName, "", "theme-pick") +
+      item("contrast", "High contrast black", "Pure black background for OLED screens", sw("sw-amoled", S.theme === "amoled", "High contrast black")) +
+      '</div><p class="section primary">Account</p><div class="list">' +
+      item("account_circle", "priya@example.com", "Signed in") +
+      item("logout", "Sign out", "", "", "signout") +
+      '</div><p class="section primary">About</p><div class="list">' +
+      item("policy", "Privacy policy", "", ic("open_in_new", "sm lead"), "privacy") +
+      item("description", "Open source licenses", "", "", "licenses") +
+      item("info", "Version", "1.0.0") + "</div></div>";
+    return h + nav("prefs");
+  }
+
+  /* ---------- overlays ---------- */
+  function dialogHtml() {
+    var d = S.dialog;
+    if (!d) return "";
+    var inner = "";
+    if (d.kind === "trust") {
+      inner = "<h3>Trust this link?</h3><p><span class=\"mono\">" + esc(domain(msg(S.sel).link)) + "</span> will be allowed on this device. Your organization can still block it.</p>" +
+        '<div class="row"><button class="btn text" type="button" data-act="close">Cancel</button><button class="btn text" type="button" data-act="trust">Trust</button></div>';
+    } else if (d.kind === "delete") {
+      var list = S.rulesTab === "blocked" ? S.blocked : S.trustedList;
+      var r = list[d.index];
+      inner = "<h3>" + (S.rulesTab === "blocked" ? "Remove from Blocked?" : "Remove from Trusted?") + "</h3><p><span class=\"mono\">" + esc(r ? r.v : "") + "</span> " +
+        (S.rulesTab === "blocked" ? "will no longer be blocked on this device." : "will be checked again like any other link.") + "</p>" +
+        '<div class="row"><button class="btn text" type="button" data-act="close">Cancel</button><button class="btn text" type="button" data-act="delete-confirm">Remove</button></div>';
+    } else if (d.kind === "add") {
+      inner = "<h3>" + (S.rulesTab === "blocked" ? "Block a link or sender" : "Trust a link or sender") + "</h3>" +
+        '<label for="rule-input" class="help" style="display:block;margin:0 0 8px">Link, domain, phone number or email</label>' +
+        '<input class="field" id="rule-input" autocomplete="off" spellcheck="false" placeholder="example.com">' +
+        '<p class="err" id="rule-err"></p>' +
+        '<div class="row"><button class="btn text" type="button" data-act="close">Cancel</button><button class="btn text" type="button" data-act="add-confirm">' + (S.rulesTab === "blocked" ? "Block" : "Trust") + "</button></div>";
+    } else if (d.kind === "access") {
+      inner = "<h3>What we access</h3><ul>" +
+        "<li>Notifications from WhatsApp and your SMS app.</li>" +
+        "<li>Links in those notifications, sent for checking.</li>" +
+        "<li>Message text only from senders who are not in your contacts.</li>" +
+        "<li>Nothing from your other apps, calls or photos.</li></ul>" +
+        '<div class="row"><button class="btn text" type="button" data-act="close">Close</button></div>';
+    } else if (d.kind === "theme") {
+      inner = "<h3>Theme</h3>" + [["light", "Light"], ["dark", "Dark"], ["amoled", "High contrast black"]].map(function (t) {
+        return '<label class="radio"><input type="radio" name="theme-r" id="theme-r-' + t[0] + '" value="' + t[0] + '"' + (S.theme === t[0] ? " checked" : "") + ">" + t[1] + "</label>";
+      }).join("") + '<div class="row"><button class="btn text" type="button" data-act="close">Done</button></div>';
+    }
+    return '<div class="scrim" data-act="scrim"><div class="dialog" role="dialog" aria-modal="true">' + inner + "</div></div>";
+  }
+  function snackHtml() {
+    if (!S.snack) return "";
+    return '<div class="snack" role="status"><span>' + esc(S.snack.text) + "</span>" +
+      (S.snack.undo ? '<button type="button" data-act="snack-undo">Undo</button>' : "") + "</div>";
+  }
+  function snack(text, undo) {
+    S.snack = { text: text, undo: undo || null };
+    clearTimeout(snackTimer);
+    snackTimer = setTimeout(function () { S.snack = null; render(); }, 4500);
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    phone.setAttribute("data-app-theme", S.theme);
+    ["light", "dark", "amoled"].forEach(function (t) { document.getElementById("t-" + t).setAttribute("aria-pressed", String(S.theme === t)); });
+    var screens = { lock: lockScreen, home: homeScreen, messages: messagesScreen, check: checkScreen, rules: rulesScreen, prefs: prefsScreen };
+    var body = app.querySelector(".body");
+    var keepScroll = body && app.getAttribute("data-screen") === S.screen ? body.scrollTop : 0;
+    app.setAttribute("data-screen", S.screen);
+    app.innerHTML = screens[S.screen]() + snackHtml() + dialogHtml();
+    var nb = app.querySelector(".body");
+    if (nb) nb.scrollTop = keepScroll;
+    var input = document.getElementById("rule-input");
+    if (input) input.focus();
+  }
+
+  function setTheme(t) {
+    S.theme = t;
+    try { localStorage.setItem("obsidian-proto-theme", t); } catch (e) { /* storage unavailable */ }
+    render();
+  }
+
+  /* ---------- actions ---------- */
+  function report() {
+    var m = msg(S.sel), d = domain(m.link), id = m.id;
+    S.reported[id] = true;
+    delete S.trusted[id];
+    if (!S.blocked.some(function (r) { return r.v === d; })) S.blocked.unshift({ type: "link", v: d, src: "Reported by you · Today" });
+    snack("Reported. This link is now blocked.", function () { undoReport(id); });
+  }
+  function undoReport(id) {
+    var d = domain(msg(id).link);
+    delete S.reported[id];
+    S.blocked = S.blocked.filter(function (r) { return !(r.v === d && r.src.indexOf("Today") > -1); });
+    snack("Report undone.");
+  }
+  function trust() {
+    var m = msg(S.sel), d = domain(m.link), id = m.id;
+    S.trusted[id] = true;
+    if (!S.trustedList.some(function (r) { return r.v === d; })) S.trustedList.unshift({ type: "link", v: d, src: "Trusted by you · Today" });
+    S.dialog = null;
+    snack("Trusted on this device.", function () { untrust(id); });
+  }
+  function untrust(id) {
+    var d = domain(msg(id).link);
+    delete S.trusted[id];
+    S.trustedList = S.trustedList.filter(function (r) { return !(r.v === d && r.src.indexOf("Today") > -1); });
+    snack("Trust removed.");
+  }
+  function addRule() {
+    var input = document.getElementById("rule-input"), err = document.getElementById("rule-err");
+    var v = (input.value || "").trim().toLowerCase().replace(/^https?:\/\//, "");
+    if (!v) { err.textContent = "Enter a link, domain, phone number or email."; input.focus(); return; }
+    var type = /@/.test(v) ? "mail" : /^\+?[\d\s-]{7,}$/.test(v) ? "phone" : "link";
+    if (type === "link" && !/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/.test(v)) { err.textContent = "That doesn't look like a link or domain. Try example.com."; input.focus(); return; }
+    var b = S.rulesTab === "blocked";
+    (b ? S.blocked : S.trustedList).unshift({ type: type, v: v, src: (b ? "Added by you" : "Trusted by you") + " · Today" });
+    S.dialog = null;
+    snack(b ? "Blocked on this device." : "Trusted on this device.");
+  }
+
+  function jump(where) {
+    S.dialog = null; S.snack = null;
+    if (where === "lock") S.screen = "lock";
+    if (where === "setup") { S.notif = false; S.screen = "home"; }
+    if (where === "home") { S.notif = true; S.screen = "home"; }
+    if (where === "messages") { S.notif = true; S.filter = "all"; S.screen = "messages"; }
+    if (where === "check") { S.sel = "m1"; delete S.reported.m1; S.screen = "check"; }
+    if (where === "reported") { S.sel = "m1"; S.screen = "check"; report(); }
+    if (where === "blocked") { S.rulesTab = "blocked"; S.screen = "rules"; }
+    if (where === "trusted") { S.rulesTab = "trusted"; S.screen = "rules"; }
+    if (where === "prefs") S.screen = "prefs";
+    render();
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-theme-pick],[data-jump],[data-go],[data-open],[data-filter],[data-tab],[data-del],[data-switch],[data-act]");
+    if (!t) return;
+    if (t.hasAttribute("data-theme-pick")) return setTheme(t.getAttribute("data-theme-pick"));
+    if (t.hasAttribute("data-jump")) return jump(t.getAttribute("data-jump"));
+    if (t.hasAttribute("data-go")) { S.screen = t.getAttribute("data-go"); S.dialog = null; return render(); }
+    if (t.hasAttribute("data-open")) { S.sel = t.getAttribute("data-open"); S.screen = "check"; return render(); }
+    if (t.hasAttribute("data-filter")) { S.filter = t.getAttribute("data-filter"); return render(); }
+    if (t.hasAttribute("data-tab")) { S.rulesTab = t.getAttribute("data-tab"); return render(); }
+    if (t.hasAttribute("data-del")) { S.dialog = { kind: "delete", index: Number(t.getAttribute("data-del")) }; return render(); }
+    if (t.hasAttribute("data-switch")) {
+      var sw = t.getAttribute("data-switch");
+      if (sw === "sw-notif") { S.notif = !S.notif; snack(S.notif ? "Message checking is on." : "Message checking is off."); }
+      if (sw === "sw-lock") { S.lockOn = !S.lockOn; snack(S.lockOn ? "Fingerprint lock is on." : "Fingerprint lock is off."); }
+      if (sw === "sw-amoled") { return setTheme(S.theme === "amoled" ? "dark" : "amoled"); }
+      return render();
+    }
+    var act = t.getAttribute("data-act");
+    if (act === "scrim") { if (e.target === t) { S.dialog = null; render(); } return; }
+    switch (act) {
+      case "unlock": S.screen = "home"; break;
+      case "notif-on": S.notif = true; snack("Message checking is on."); break;
+      case "what-access": S.dialog = { kind: "access" }; break;
+      case "report": report(); break;
+      case "undo-report": undoReport(S.sel); break;
+      case "trust-ask": S.dialog = { kind: "trust" }; break;
+      case "trust": trust(); break;
+      case "untrust": untrust(S.sel); break;
+      case "close": S.dialog = null; break;
+      case "add-rule": S.dialog = { kind: "add" }; break;
+      case "add-confirm": addRule(); return render();
+      case "delete-confirm":
+        var list = S.rulesTab === "blocked" ? S.blocked : S.trustedList;
+        var removed = list.splice(S.dialog.index, 1)[0];
+        S.dialog = null;
+        if (removed) snack("Removed " + removed.v + ".", function () { list.splice(0, 0, removed); snack("Restored."); });
+        break;
+      case "snack-undo": var u = S.snack && S.snack.undo; S.snack = null; if (u) u(); break;
+      case "theme-pick": S.dialog = { kind: "theme" }; break;
+      case "signout": S.screen = "lock"; snack("Signed out."); break;
+      case "privacy": snack("Opens the privacy policy in your browser."); break;
+      case "licenses": snack("Opens the open source licenses."); break;
+      case "account": S.screen = "prefs"; break;
+      case "search": snack("Search isn't part of this prototype."); break;
+      case "more": snack("More options aren't part of this prototype."); break;
+    }
+    render();
+  });
+
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.name === "theme-r") setTheme(e.target.value);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && S.dialog) { S.dialog = null; render(); }
+    if (e.key === "Enter" && e.target && e.target.id === "rule-input") { addRule(); render(); }
+  });
+
+  try {
+    var saved = localStorage.getItem("obsidian-proto-theme");
+    if (saved === "light" || saved === "dark" || saved === "amoled") S.theme = saved;
+  } catch (e) { /* storage unavailable */ }
+  render();
+})();
+</script>
