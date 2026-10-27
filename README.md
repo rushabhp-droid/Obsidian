@@ -150,7 +150,7 @@ obsidian/
 ├── db/init.sql         # PostgreSQL schema
 ├── docs/protocol.md    # WebSocket + scan API contract
 ├── cloudflared/        # Named tunnel config
-├── scripts/            # Seed data, VirusTotal cache pre-warm, demo reset
+├── scripts/            # build.sh, seed data, VirusTotal cache pre-warm, demo reset
 └── docker-compose.yml  # PostgreSQL + Redis
 ```
 
@@ -159,6 +159,8 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 ---
 
 ## Getting Started
+
+**Quick start:** `scripts/build.sh` tests and builds everything, then `cd backend-spring && gradle bootTestRun` plus `cd web-dashboard && npm run dev` runs it with no Docker. See [Build and test everything](#8-build-and-test-everything) and the steps below.
 
 ### What runs where
 
@@ -291,22 +293,50 @@ Phones and daemons on other machines use `https://obsidian.<your-domain>` and `w
 > Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
 
 ### 8. Build and test everything
+`scripts/build.sh` is the one build entry point. It runs each component's tests, builds release artifacts, and stops at the first failure with a non-zero exit code, so CI can use it as is.
+
 ```sh
-scripts/build.sh                  # test + package all components into dist/ (about 2 minutes)
-scripts/build.sh backend daemon   # only some components (backend | daemon | web)
-scripts/build.sh --skip-tests     # package without running tests
-scripts/build.sh test             # every test suite, build nothing
-scripts/build.sh clean            # remove dist/ and build outputs
+scripts/build.sh                  # test + build backend, daemon and web (about 2 minutes)
+scripts/build.sh backend daemon   # only the components you name: backend | daemon | web
+scripts/build.sh --skip-tests     # build without running tests (combine with targets)
+scripts/build.sh test             # run every test suite, build nothing
+scripts/build.sh clean            # remove dist/, web-dashboard/.next, Gradle and Cargo outputs
+scripts/build.sh --help
 ```
-It picks a JDK 21–25 by itself (or honours `JAVA_HOME`), uses `./gradlew` or a matching system Gradle, and runs `npm ci` when `node_modules` is stale. Outputs:
 
-| Artifact | Run it with |
-| --- | --- |
-| `dist/obsidian-backend.jar` | `java -jar dist/obsidian-backend.jar` (reads `.env` from the current or parent directory, or env vars) |
-| `dist/daemon-rust` | `sudo dist/daemon-rust --token-file /etc/obsidian/agent.token` (Linux x86-64, glibc) |
-| `web-dashboard/.next` | `cd web-dashboard && npm start` (production server on :3000; `NEXT_PUBLIC_API_MODE` is baked in at build time, default `live`) |
+What each target does:
 
-The suites on their own: `cd backend-spring && gradle test` (embedded PostgreSQL + in-process Redis, no Docker), `cd daemon-rust && cargo test`, `cd web-dashboard && npx tsc --noEmit && npm run lint`.
+| Target | Tests | Build | Needs |
+| --- | --- | --- | --- |
+| `backend` | `gradle test`: 220 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
+| `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
+
+None of the tests need Docker, network services or API keys.
+
+**Choosing the toolchain.** The script finds a JDK 21–25 by itself: the default `java`, then `/usr/lib/jvm/*`, SDKMAN, `~/.jdks` and Android Studio's bundled JDK. JDK 26 and newer break Byte Buddy in the tests. It uses `./gradlew` when the wrapper's Gradle is already downloaded, a system `gradle` of the same version if one is installed, and otherwise `./gradlew`, which downloads it. Override either one:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `JAVA_HOME` | auto-detected | JDK used for the backend |
+| `GRADLE` | `./gradlew` or `gradle` | Gradle command, e.g. `GRADLE=gradle` |
+| `NEXT_PUBLIC_API_MODE` | `live` | Baked into the web build: `live` calls Spring, `mock` serves sample data |
+| `SPRING_ORIGIN` | `http://localhost:8080` | Where the built dashboard proxies `/api`, `/ws`, … (localhost fallback) |
+
+`NEXT_PUBLIC_*` values and the `next.config.ts` rewrites are fixed when the dashboard is built. Set `NEXT_PUBLIC_API_MODE`, `SPRING_ORIGIN` and `NEXT_PUBLIC_TURNSTILE_SITE_KEY` before running `scripts/build.sh web`, not only when starting it. For example: `NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAA… scripts/build.sh web`.
+
+**Running what it built.** The artifacts are self-contained except for Postgres and Redis:
+
+```sh
+scripts/reset-demo.sh                                   # or: docker compose up -d   (Postgres + Redis)
+java -jar dist/obsidian-backend.jar                     # :8080; reads .env from the current or parent directory
+cd web-dashboard && npm start                           # :3000, production server for the .next build
+sudo dist/daemon-rust --token-file /etc/obsidian/agent.token   # on each Linux endpoint
+```
+
+Configuration for the jar comes from `.env` or environment variables (see step 2), for example `DB_URL=jdbc:postgresql://db:5432/obsidian java -jar dist/obsidian-backend.jar`. The daemon is a single Linux x86-64 binary linked against glibc: copy `dist/daemon-rust` to the endpoint and run it as root, or with `CAP_NET_ADMIN` plus write access to `/etc/hosts`. `--help` lists its flags.
+
+To run one suite on its own: `cd backend-spring && gradle test`, `cd daemon-rust && cargo test`, `cd web-dashboard && npx tsc --noEmit && npm run lint`.
 
 ### Routing
 The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` go to Spring (`:8080`), and everything else goes to Next.js (`:3000`). This is set up in `cloudflared/config.yml`, or in `next.config.ts` rewrites in localhost mode. The rewrites proxy WebSocket upgrades too.
@@ -315,8 +345,10 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 
 | Symptom | Fix |
 | --- | --- |
-| Gradle or tests fail with a Byte Buddy / "Java 27 not supported" error | Run with JDK 21–25: `JAVA_HOME=/path/to/jdk21 gradle …` |
-| `./gradlew` times out downloading Gradle | Use an installed `gradle` 9.x, or retry on another network |
+| `build.sh`: "no JDK 21–25 found" | Install JDK 21 (e.g. `pacman -S jdk21-openjdk`, `apt install openjdk-21-jdk`) or set `JAVA_HOME` |
+| Gradle or tests fail with a Byte Buddy / "Java 27 not supported" error | Run with JDK 21–25: `JAVA_HOME=/path/to/jdk21 scripts/build.sh` |
+| `./gradlew` times out downloading Gradle | Install Gradle 9.8.2 system-wide (`build.sh` picks it up), or `GRADLE=gradle scripts/build.sh` |
+| Built dashboard calls the wrong API, or shows sample data | Rebuild with the right `SPRING_ORIGIN` / `NEXT_PUBLIC_API_MODE`; both are fixed at build time |
 | Dashboard shows "Sample data" | Set `NEXT_PUBLIC_API_MODE=live` in `web-dashboard/.env.local` and restart `npm run dev` |
 | Sign-in loops back to `/login` | Spring isn't running on `SPRING_ORIGIN` (default `http://localhost:8080`) |
 | Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
