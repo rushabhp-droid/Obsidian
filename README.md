@@ -160,44 +160,157 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 
 ## Getting Started
 
-### Prerequisites
-- JDK 21+ and Gradle (or `./gradlew`), Node.js 20+, a Rust stable toolchain, Android Studio
-- Docker and Docker Compose for the real stack. Tests and `gradle bootTestRun` don't need it.
-- A Linux machine for the daemon (root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`)
-- For the demo: a VirusTotal API key, a Google Cloud OAuth client (Gmail API), Cloudflare Turnstile keys, and a domain in Cloudflare for a named tunnel
+### What runs where
 
-### Configure
+| Process | Directory | Port | Needs |
+| --- | --- | --- | --- |
+| PostgreSQL 16 + Redis 7 | `docker-compose.yml` | 5432, 6379 | Docker (skip in dev mode: embedded instead) |
+| Spring Boot API | `backend-spring/` | 8080 | JDK 21–25 |
+| Next.js dashboard | `web-dashboard/` | 3000 | Node.js 20+ |
+| Rust firewall daemon | `daemon-rust/` | none (connects out to `/ws/firewall`) | Rust stable, Linux, root for real enforcement |
+| Cloudflare tunnel (demo only) | `cloudflared/` | none | `cloudflared`, a domain in Cloudflare |
+| Android app | `mobile-android/` | n/a | Not built yet; open `docs/prototype/android.html` for the prototype |
+
+Open the dashboard at **http://localhost:3000**. Everything below `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` is proxied to Spring, so you never browse to :8080.
+
+### 1. Prerequisites
+- JDK 21–25 and Gradle 9 (the repo has `./gradlew`; the system `gradle` works too)
+- Node.js 20+ and npm
+- Rust stable (`cargo`)
+- Docker with Compose, only for option B
+- A Linux machine for the daemon. Real blocking needs root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`.
+
+### 2. Configure (once)
 ```sh
-cp .env.example .env    # fill in the keys; Spring reads ../.env, docker compose reads .env
+cp .env.example .env                      # Spring reads ../.env, docker compose reads .env
+cp web-dashboard/.env.example web-dashboard/.env.local
+```
+In `web-dashboard/.env.local` set `NEXT_PUBLIC_API_MODE=live`. Without it, the dashboard shows built-in sample data and never calls Spring.
+
+Every key in `.env` is optional for local work:
+
+| Key | Without it |
+| --- | --- |
+| `VT_API_KEY` | Every unknown URL and file stays `PENDING` |
+| `TURNSTILE_SECRET_KEY` (+ `NEXT_PUBLIC_TURNSTILE_SITE_KEY` in `.env.local`) | Bot check is off; a warning is logged |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` | "Connect Gmail" fails; polling is off |
+| `APP_ENC_KEY` | Required to store Gmail tokens (the dev server sets one for you). Generate with `openssl rand -base64 32` |
+| `PUBLIC_BASE_URL`, `RP_ID` | Default to `http://localhost:3000` and `localhost` |
+
+### 3a. Option A: run without Docker (quickest)
+The backend starts its own embedded PostgreSQL 16 and an in-process Redis, loads `db/init.sql` and `scripts/seed.sql`, and forgets everything when it stops.
+
+```sh
+# terminal 1: API on :8080 (ready when it logs "Started DevServer")
+cd backend-spring && gradle bootTestRun
+
+# terminal 2: dashboard on :3000
+cd web-dashboard && npm install && npm run dev
 ```
 
-### Run without Docker (development)
+### 3b. Option B: full stack with Docker
 ```sh
-cd backend-spring && gradle bootTestRun                       # :8080, embedded Postgres + Redis, demo seed
-cd web-dashboard  && npm install && NEXT_PUBLIC_API_MODE=live npm run dev   # :3000
-```
-Sign in as `avery.lin@aster.example` (admin), `priya.nair@aster.example` (employee) or `riley.chen@mail.example` (consumer); the password is `obsidian-demo-2026`. Data is lost when the backend stops.
+# Postgres + Redis, schema, demo seed. Run again any time to wipe and reset.
+scripts/reset-demo.sh
 
-### Run the full stack
-```sh
-scripts/reset-demo.sh                                  # Postgres + Redis in Docker, schema + seed
-cd backend-spring && ./gradlew bootRun                 # :8080
-cd web-dashboard  && npm run dev                       # :3000 (NEXT_PUBLIC_API_MODE=live)
-VT_API_KEY=... scripts/prewarm-vt.sh                   # cache every demo URL / hash
-```
+# terminal 1: API on :8080
+cd backend-spring && ./gradlew bootRun
 
-### Enroll a daemon
-Register the host on the **Agents** page (or `POST /api/v1/agents`), save the token it shows once to a file readable only by root, then:
+# terminal 2: dashboard on :3000
+cd web-dashboard && npm install && npm run dev
+
+# optional, needs VT_API_KEY: cache the demo URLs (4 requests/min, so it sleeps between them)
+scripts/prewarm-vt.sh                    # reads scripts/demo-indicators.txt; or pass URLs / SHA-256s
+```
+Data persists in Docker volumes until the next `scripts/reset-demo.sh` (or `docker compose down -v`).
+
+### 4. Sign in
+Go to http://localhost:3000 and sign in with password `obsidian-demo-2026` as one of these:
+
+| Account | Role |
+| --- | --- |
+| `avery.lin@aster.example` | Admin of Aster Research (rule editor, agents) |
+| `priya.nair@aster.example` | Employee of Aster Research |
+| `riley.chen@mail.example` | Consumer (no organization) |
+
+To add a passkey, open **Settings** → **Add a passkey** in Chrome on `http://localhost:3000`, then sign out and use **Continue with passkey**. Passkeys are bound to `RP_ID`, so a passkey made on localhost won't work on the tunnel hostname.
+
+### 5. Run the firewall daemon
+1. As the admin, open **Endpoint Security** → **Register agent**, enter the hostname, and copy the token. It is shown once. You can also call `POST /api/v1/agents`.
+2. Save the token:
+   ```sh
+   sudo install -d -m 700 /etc/obsidian
+   echo 'obs_…' | sudo tee /etc/obsidian/agent.token >/dev/null && sudo chmod 600 /etc/obsidian/agent.token
+   ```
+3. Build and start it:
+   ```sh
+   cd daemon-rust && cargo build --release
+
+   # real enforcement (root): OBSIDIAN iptables chain + /etc/hosts sinkhole
+   sudo ./target/release/daemon-rust --token-file /etc/obsidian/agent.token
+   #   behind the tunnel: add --server wss://obsidian.<your-domain>/ws/firewall
+
+   # or without root: prints the iptables commands and writes $TMPDIR/obsidian-hosts instead
+   ./target/release/daemon-rust --dry-run --token-file ./agent.token
+   ```
+   The default server is `ws://localhost:8080/ws/firewall`. The dashboard header shows "Rust agent connected" within 10 s.
+4. Check it works:
+   ```sh
+   # in the dashboard: Rules and Policies → New rule → Domain, testsafebrowsing.appspot.com, Blacklist
+   grep OBSIDIAN-MANAGED /etc/hosts      # 0.0.0.0 testsafebrowsing.appspot.com # OBSIDIAN-MANAGED
+   curl -m 5 http://testsafebrowsing.appspot.com/   # fails: the name resolves to 0.0.0.0
+   sudo iptables -S OBSIDIAN             # IP rules show up here
+   # Bypass the rule in the dashboard and the same curl succeeds again.
+   ```
+5. Stop it with Ctrl+C (or SIGTERM). It flushes the OBSIDIAN chain and removes its hosts lines. If it was offline while rules changed, the next connect re-syncs them.
+
+`/etc/hosts` doesn't cover subdomains, and browsers with secure DNS (DNS over HTTPS) ignore it. Test with `curl`, or turn secure DNS off in the demo browser.
+
+### 6. Connect Gmail (optional)
+1. Create a Google Cloud OAuth client of type "Web application" with the Gmail API enabled.
+2. Set its redirect URI to `${PUBLIC_BASE_URL}/login/oauth2/code/google`, for example `http://localhost:3000/login/oauth2/code/google`.
+3. Keep the consent screen in Testing mode and add every demo account as a test user.
+4. Put `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` and `APP_ENC_KEY` in `.env`, restart Spring, then use **Settings** → **Connect Gmail**.
+
+Unread INBOX and SPAM messages are scanned every 45 s and show up under **Email Security**.
+
+### 7. Public demo through a named tunnel
 ```sh
-cd daemon-rust && cargo build --release
-sudo ./target/release/daemon-rust --server wss://obsidian.<your-domain>/ws/firewall --token-file /etc/obsidian/agent.token
-./target/release/daemon-rust --dry-run --token-file agent.token   # no root: prints iptables commands, temp hosts file
+cloudflared tunnel create obsidian                      # writes cloudflared/obsidian.json (gitignored)
+cloudflared tunnel route dns obsidian obsidian.<your-domain>
+# edit cloudflared/config.yml: replace <your-domain>
+cloudflared tunnel --config cloudflared/config.yml run obsidian
+```
+Then set these in `.env` and restart Spring and Next.js:
+- `PUBLIC_BASE_URL=https://obsidian.<your-domain>`
+- `RP_ID=obsidian.<your-domain>`
+- your real Turnstile keys
+
+Phones and daemons on other machines use `https://obsidian.<your-domain>` and `wss://obsidian.<your-domain>/ws/firewall`.
+
+> Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
+
+### 8. Run the tests
+```sh
+cd backend-spring && gradle test         # embedded PostgreSQL + in-process Redis; no Docker
+cd daemon-rust && cargo test
+cd web-dashboard && npx tsc --noEmit && npm run lint
 ```
 
 ### Routing
-The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` go to Spring (`:8080`), and everything else goes to Next.js (`:3000`). This is set up in `cloudflared/config.yml`, or in `next.config.ts` rewrites in localhost mode.
+The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` go to Spring (`:8080`), and everything else goes to Next.js (`:3000`). This is set up in `cloudflared/config.yml`, or in `next.config.ts` rewrites in localhost mode. The rewrites proxy WebSocket upgrades too.
 
-> Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
+### Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Gradle or tests fail with a Byte Buddy / "Java 27 not supported" error | Run with JDK 21–25: `JAVA_HOME=/path/to/jdk21 gradle …` |
+| `./gradlew` times out downloading Gradle | Use an installed `gradle` 9.x, or retry on another network |
+| Dashboard shows "Sample data" | Set `NEXT_PUBLIC_API_MODE=live` in `web-dashboard/.env.local` and restart `npm run dev` |
+| Sign-in loops back to `/login` | Spring isn't running on `SPRING_ORIGIN` (default `http://localhost:8080`) |
+| Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
+| Daemon logs `refused the agent token (401)` | Register the agent again and replace the token file |
+| `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'` |
 
 ---
 
