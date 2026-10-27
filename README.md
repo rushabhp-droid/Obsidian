@@ -254,7 +254,7 @@ Open the dashboard at **http://localhost:3000**. Everything below `/api`, `/ws`,
 
 ### 2. Configure (once)
 ```sh
-cp .env.example .env                      # Spring reads ../.env, docker compose reads .env
+cp .env.example .env                      # copy, don't move: the example stays in git. Spring and docker compose read .env
 cp web-dashboard/.env.example web-dashboard/.env.local
 ```
 In `web-dashboard/.env.local` set `NEXT_PUBLIC_API_MODE=live`. Without it, the dashboard shows built-in sample data and never calls Spring.
@@ -356,11 +356,14 @@ Gmail needs your own Google OAuth client. Without one, the backend has no client
 4. **`.env`.** Copy the client ID and secret:
    ```sh
    cp -n .env.example .env
-   # then set, in .env:
+   openssl rand -base64 32            # prints a key for APP_ENC_KEY
+   ```
+   Then edit `.env`. Paste plain values: no quotes, no `$(…)`, no comments after a value.
+   ```
    GMAIL_CLIENT_ID=1234567890-abc….apps.googleusercontent.com
    GMAIL_CLIENT_SECRET=GOCSPX-…
-   APP_ENC_KEY=$(openssl rand -base64 32)   # paste the generated value; it encrypts the stored refresh token
-   PUBLIC_BASE_URL=http://localhost:3000     # or https://obsidian.<your-domain>
+   APP_ENC_KEY=<the printed key>
+   PUBLIC_BASE_URL=http://localhost:3000
    ```
 5. **Restart the backend.** Settings are read at startup. Stop `scripts/build.sh run` with Ctrl+C and start it again.
    - Use `--prod` for a demo you prepare in advance. Dev mode keeps data in memory, so the connection is gone after a restart.

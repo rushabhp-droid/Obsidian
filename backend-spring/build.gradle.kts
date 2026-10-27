@@ -60,6 +60,11 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // Files outside this project that tests read: a change to any of them must re-run the tests.
+    inputs.files(
+        "../db/init.sql", "../scripts/seed.sql", "../docker-compose.yml", "../.env.example",
+        "../web-dashboard/src/lib/types.ts",
+    ).withPropertyName("sharedFiles").optional()
     // Mockito attaches its agent at runtime (and class-data sharing would warn about it).
     jvmArgs("-XX:+EnableDynamicAgentLoading", "-Xshare:off")
 }
