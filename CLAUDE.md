@@ -6,7 +6,7 @@ Obsidian is a 24-hour hackathon project: one threat-rule engine that covers emai
 
 ## Status
 
-The repo is still the plan (`README.md`, `TODO.md`). The layout below is the target from `TODO.md` §3. Create directories as you get to them. Don't scaffold every component up front.
+`web-dashboard/` exists: the P0 screens from the Obsidian Figma file, on sample data until Spring is up (`NEXT_PUBLIC_API_MODE`, see `web-dashboard/README.md`). Everything else is still the plan (`README.md`, `TODO.md`). The layout below is the target from `TODO.md` §3. Create directories as you get to them. Don't scaffold every component up front.
 
 ## Scope discipline (most important rule)
 

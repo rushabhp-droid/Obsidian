@@ -1,0 +1,122 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* The design defines a light console only. Keeping the class-based variant
+   stops the dark: classes inside shadcn components from following the OS. */
+@custom-variant dark (&:is(.dark *));
+
+/* Tokens from the Figma "Brand & foundations" and "Shared component reference" frames. */
+:root {
+  --canvas: #f5f6f7;
+  --surface: #ffffff;
+  --ink: #15171a;
+  --subtle: #686d75;
+  --line: #e2e5e9;
+  --interactive: #285fad;
+  --critical: #c93636;
+  --critical-soft: #fceeee;
+  --warning: #926016;
+  --warning-soft: #fbf3e4;
+  --verified: #267a52;
+  --verified-soft: #edf7f1;
+  --info-soft: #edf3fc;
+  --sidebar: #0b0c0e;
+  --sidebar-foreground: #a0a5ae;
+
+  /* shadcn/ui variables mapped onto the tokens above */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--interactive);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface);
+  --secondary-foreground: var(--ink);
+  --muted: var(--canvas);
+  --muted-foreground: var(--subtle);
+  --accent: var(--canvas);
+  --accent-foreground: var(--ink);
+  --destructive: var(--critical);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--interactive);
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: var(--sidebar);
+  --sidebar-accent: #17191c;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1f2226;
+  --sidebar-ring: var(--interactive);
+  --radius: 8px;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-interactive: var(--interactive);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-verified: var(--verified);
+  --color-verified-soft: var(--verified-soft);
+  --color-info-soft: var(--info-soft);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  /* Radii: 4 px badge / 6 px control / 8 px panel */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground text-[13px] leading-[1.4] antialiased;
+  }
+  /* Focus: 2 px blue outline */
+  :focus-visible {
+    outline: 2px solid var(--interactive);
+    outline-offset: 2px;
+  }
+}

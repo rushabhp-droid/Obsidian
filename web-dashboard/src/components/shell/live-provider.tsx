@@ -1,0 +1,89 @@
+"use client";
+
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api, ApiError } from "@/lib/api";
+import { subscribeDashboard } from "@/lib/ws";
+import { useResource } from "@/hooks/use-resource";
+import type { DashboardEvent, EndpointAgent, SessionInfo } from "@/lib/types";
+
+interface LiveState {
+  session: SessionInfo | undefined;
+  sessionError: Error | undefined;
+  /** /ws/dashboard is open. */
+  socketConnected: boolean;
+  /** Rule and scan events received since the page loaded, newest first. */
+  events: Exclude<DashboardEvent, { type: "HEARTBEAT" }>[];
+  /** Increments on every BLOCK / BYPASS event, so rule lists know to refetch. */
+  ruleVersion: number;
+  /** Agents with heartbeats from the socket merged in. */
+  agents: EndpointAgent[] | undefined;
+  agentsError: Error | undefined;
+  reloadAgents: () => void;
+}
+
+const LiveContext = createContext<LiveState | null>(null);
+
+/** Session, agent heartbeats and the dashboard socket, shared by the shell and pages. */
+export function LiveProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const session = useResource(api.session);
+  const agents = useResource(api.listAgents);
+  const [events, setEvents] = useState<LiveState["events"]>([]);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [ruleVersion, setRuleVersion] = useState(0);
+  const { mutate: mutateAgents } = agents;
+
+  useEffect(() => {
+    if (session.error instanceof ApiError && session.error.status === 401) {
+      router.replace("/login?reason=expired");
+    }
+  }, [session.error, router]);
+
+  useEffect(
+    () =>
+      subscribeDashboard((event) => {
+        if (event.type === "HEARTBEAT") {
+          mutateAgents((list = []) =>
+            list.map((a) => (a.id === event.agentId ? { ...a, lastHeartbeatAt: event.at } : a)),
+          );
+        } else {
+          setEvents((list) => [event, ...list].slice(0, 25));
+          if (event.type !== "SCAN") setRuleVersion((v) => v + 1);
+        }
+      }, setSocketConnected),
+    [mutateAgents],
+  );
+
+  const value = useMemo<LiveState>(
+    () => ({
+      session: session.data,
+      sessionError: session.error,
+      socketConnected,
+      events,
+      ruleVersion,
+      agents: agents.data,
+      agentsError: agents.error,
+      reloadAgents: agents.reload,
+    }),
+    [session.data, session.error, socketConnected, events, ruleVersion, agents.data, agents.error, agents.reload],
+  );
+
+  return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
+}
+
+export function useLive() {
+  const value = useContext(LiveContext);
+  if (!value) throw new Error("useLive must be used inside <LiveProvider>");
+  return value;
+}
+
+/** Re-renders on an interval so "4 s ago" and online/offline stay current. */
+export function useNow(intervalMs = 5_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
