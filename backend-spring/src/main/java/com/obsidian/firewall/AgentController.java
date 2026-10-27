@@ -1,20 +1,10 @@
 package com.obsidian.firewall;
 
-import com.obsidian.audit.AuditService;
-import com.obsidian.auth.Tokens;
-import com.obsidian.config.ForbiddenException;
 import com.obsidian.model.Account;
-import com.obsidian.model.AuditAction;
-import com.obsidian.model.EndpointAgent;
 import com.obsidian.model.EndpointAgentRepository;
-import com.obsidian.rules.InvalidRuleRequestException;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,35 +17,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/agents")
 public class AgentController {
 
-    private static final Pattern HOSTNAME =
-            Pattern.compile("^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$");
-
     public record RegisterAgentRequest(@NotBlank String hostname) {}
 
+    private final AgentService agentService;
     private final EndpointAgentRepository agents;
-    private final AuditService audit;
 
-    public AgentController(EndpointAgentRepository agents, AuditService audit) {
+    public AgentController(AgentService agentService, EndpointAgentRepository agents) {
+        this.agentService = agentService;
         this.agents = agents;
-        this.audit = audit;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Transactional
     public AgentDto register(Account account, @RequestBody RegisterAgentRequest request) {
-        if (!account.isAdmin()) {
-            throw new ForbiddenException("Only organization admins can register agents.");
-        }
-        String hostname = request.hostname() == null ? "" : request.hostname().trim().toLowerCase(Locale.ROOT);
-        if (!HOSTNAME.matcher(hostname).matches()) {
-            throw new InvalidRuleRequestException("Enter a hostname: letters, digits, hyphens and dots only.");
-        }
-        String token = Tokens.generate("obs_");
-        EndpointAgent agent = agents.save(new EndpointAgent(account.orgId(), hostname, Tokens.sha256Hex(token)));
-        audit.record(AuditAction.AGENT_REGISTER, account.orgId(), account.userId(), null,
-                Map.of("agentId", agent.getId().toString(), "hostname", hostname));
-        return AgentDto.of(agent, token);
+        AgentService.Registered registered = agentService.register(account, request.hostname());
+        return AgentDto.of(registered.agent(), registered.token());
     }
 
     @GetMapping

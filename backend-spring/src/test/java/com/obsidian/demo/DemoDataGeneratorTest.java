@@ -77,6 +77,20 @@ class DemoDataGeneratorTest extends IntegrationTest {
         }
     }
 
+    @Autowired com.obsidian.config.StartupBootstrap bootstrap;
+
+    @Test
+    void demoRulesApplyThroughTheStartupSetup() throws Exception {
+        DemoDataGenerator.generate(dir, domain, new Random(7), false);
+        TestInfra.applySchema(dir.resolve("seed.sql"));
+
+        bootstrap.applyRules(dir.resolve("rules.json"));
+
+        JsonNode rules = mapper.readTree(dir.resolve("rules.json").toFile());
+        assertThat(rules.size()).isEqualTo(12);
+        assertThat(rules.findValuesAsText("indicatorValue")).doesNotContain("testsafebrowsing.appspot.com");
+    }
+
     @Test
     void loadsOverADatabaseThatAlreadyHasTheseAccountsUnderOtherIds() throws Exception {
         List<DemoDataGenerator.Account> accounts = DemoDataGenerator.generate(dir, domain, new Random(7), false);

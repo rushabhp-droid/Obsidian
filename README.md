@@ -22,7 +22,7 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). Field names are checked by `ApiContractTest`. |
 | `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
 
-Tests: backend 224/224 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
+Tests: backend 232/232 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
 ### What is left
 1. **Hour 8 milestone on real hardware:** run the daemon as root (no `--dry-run`), add a domain in the web editor and check that `curl` is blocked, then bypass and check that it works again.
@@ -176,7 +176,7 @@ What it does, in order:
 1. Checks that ports 8080 and 3000 are free.
 2. Starts the backend and waits until it answers. In dev mode its data is in memory and starts fresh every run.
 3. Starts the dashboard in `live` mode and waits for it.
-4. Gives the daemon an agent token. It reuses `.run/agent.token` if the running backend still accepts it. Otherwise it signs in as the demo admin and registers this machine as a new agent. Dev data is in memory, so a dev run usually registers again; switching between dev and `--prod`, or running `scripts/reset-demo.sh`, also makes the old token invalid.
+4. Gives the daemon an agent token. The backend does this itself at startup: it keeps `.run/agent.token` while this database knows it, and otherwise registers this machine as a new agent in the admin's organization. Dev data is in memory, so a dev run usually registers again; switching between dev and `--prod`, or running `scripts/reset-demo.sh`, also makes the old token invalid. Startup setup doesn't sign in over HTTP, so it works with Turnstile on.
 5. Starts the daemon, which syncs and heartbeats every 10 s.
 6. Streams every module's output with a `[backend]`, `[web]` or `[daemon]` prefix.
 
@@ -198,10 +198,11 @@ scripts/build.sh run --prod --demo        # or Docker + built artifacts (scripts
 scripts/build.sh demo --force             # rotate every password, then run --demo again
 ```
 
-`demo/` holds three files:
+`demo/` holds four files:
 - `CREDENTIALS.md`: accounts, passwords and a demo cheat sheet. Mode 0600; never commit, share or screenshot it.
-- `credentials.env`: the same passwords in machine-readable form, used by `run --demo`.
+- `credentials.env`: the same accounts in machine-readable form, used by `run --demo`.
 - `seed.sql`: the data. Passwords appear in it only as Argon2id hashes.
+- `rules.json`: the demo's threat rules.
 
 | Account | Role | Used for |
 | --- | --- | --- |
@@ -221,7 +222,7 @@ What the data contains:
   - invoice malware at 31 detections;
   - a parcel phish that passes SPF, DKIM and DMARC but isn't official, because the domain is attacker-owned; its link stays `PENDING`;
   - internal mail.
-- **12 threat rules:** `run --demo` creates them through the API, so each one is audited and published like a real change:
+- **12 threat rules** (`rules.json`): `run --demo` has the backend apply them through `RuleService` at startup, as the account each one belongs to, so each is audited and published like a real change:
   - admin blocks for two TEST-NET IPs and `invoice-verify.example`, and admin allows for `docs` and `status.aster.example`;
   - a colleague's reports of a domain, a phone number, a sender, a URL and a malware hash;
   - Priya's 2-hour personal bypass and Riley's personal spam block.
@@ -229,7 +230,7 @@ What the data contains:
 
 `testsafebrowsing.appspot.com` is left unreported, so you can report it live (TODO.md §8). Fictional names use the reserved `.example` domain and TEST-NET IPs, so nothing real gets blocked.
 
-Turnstile has to be off while `run --demo` creates the rules (it signs in through the API). Create them first, then set `TURNSTILE_SECRET_KEY` and restart. With `--prod` the rules stay in the Docker volume.
+This works with Turnstile on. `run` passes `TURNSTILE_SITE_KEY` from `.env` to the dashboard, and a `--prod` run rebuilds the dashboard when that key changes. A real Turnstile site key only works on the hostnames listed for its widget in the Cloudflare dashboard (Turnstile → your widget → Hostnames). Add `localhost` there to sign in at http://localhost:3000, or use Cloudflare's test keys locally.
 
 ### What runs where
 
@@ -407,7 +408,7 @@ What each target does:
 
 | Target | Tests | Build | Needs |
 | --- | --- | --- | --- |
-| `backend` | `gradle test`: 224 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `backend` | `gradle test`: 232 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
 
@@ -453,8 +454,9 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
 | Daemon logs `refused the agent token (401)` | The token belongs to another database (dev vs `--prod`, or after `reset-demo.sh`). `build.sh run` now checks and re-registers by itself; for a daemon started by hand, register the agent again and replace the token file |
 | `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'`; a previous `build.sh run` stops with `kill "$(cat .run/run.pid)"` |
-| `build.sh run --demo`: "no official demo data yet" | Run `scripts/build.sh demo` first |
-| `build.sh run`: "couldn't sign in as … to register the daemon" | Turnstile is on or the seed isn't loaded: register an agent in the dashboard and pass `--agent-token FILE` |
+| `build.sh run --demo`: "no official demo data yet" | Run `scripts/build.sh demo` first (and `scripts/build.sh demo --force` if it was generated before `rules.json` existed) |
+| `build.sh run`: "the backend didn't set up the agent token" | The admin account isn't in this database (wrong seed, or `OBSIDIAN_ADMIN_EMAIL` doesn't match it). `.run/backend.log` says which; or register an agent in the dashboard and pass `--agent-token FILE` |
+| Turnstile widget shows an error on the sign-in page | The site key's widget doesn't list this hostname; add `localhost` (or your tunnel hostname) in Cloudflare, or use the test keys locally |
 
 ---
 

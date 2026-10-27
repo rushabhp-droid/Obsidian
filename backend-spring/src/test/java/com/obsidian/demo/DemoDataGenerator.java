@@ -23,8 +23,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  *   <li>{@code seed.sql}: organization, accounts (Argon2id hashes only), a day of scan telemetry and the
  *       Email security inbox, all relative to NOW() and idempotent.</li>
  * </ul>
- * Threat rules aren't in the SQL: only RuleService writes them, so {@code scripts/build.sh run --demo}
- * creates them through the API. Run: {@code gradle -q generateDemoData --args="../demo [--force]"}.
+ * Threat rules aren't in the SQL: only RuleService writes them. {@code rules.json} lists them, and
+ * {@code scripts/build.sh run --demo} has the backend apply it through RuleService at startup. Run: {@code gradle -q generateDemoData --args="../demo [--force]"}.
  */
 public final class DemoDataGenerator {
 
@@ -61,6 +61,7 @@ public final class DemoDataGenerator {
             writeSecret(dir.resolve("credentials.env"), env(accounts));
             writeSecret(dir.resolve("CREDENTIALS.md"), markdown(accounts));
             Files.writeString(dir.resolve("seed.sql"), sql(domain, accounts, telemetry));
+            Files.writeString(dir.resolve("rules.json"), JSON.writerWithDefaultPrettyPrinter().writeValueAsString(rules(accounts)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -128,12 +129,48 @@ public final class DemoDataGenerator {
                    Rules and Policies → New rule. The daemon blocks it: `curl -m 5 http://testsafebrowsing.appspot.com/` fails.
                 4. Bypass it as Avery: `curl` works again.
 
-                Pre-seeded rules (created through the API by `run --demo`): admin blocks for two TEST-NET IPs and
+                Pre-seeded rules (rules.json, applied through RuleService when `run --demo` starts the backend): admin blocks for two TEST-NET IPs and
                 invoice-verify.example, admin allows for docs/status.aster.example, colleague reports for a parcel
                 phishing domain, a spam number, a sender, a URL and a malware hash, Priya's 2-hour personal bypass
                 of delivery-status.example, and Riley's personal spam block.
                 """);
         return out.toString();
+    }
+
+    /** The demo's threat rules, applied through RuleService as each account by the startup setup. */
+    static List<Map<String, Object>> rules(List<Account> accounts) {
+        Map<String, String> as = emails(accounts);
+        String admin = as.get("ADMIN"), colleague = as.get("COLLEAGUE");
+        return List.of(
+                rule(admin, "REPORT", "IP", "203.0.113.45", "MALWARE", null),
+                rule(admin, "REPORT", "IP", "198.51.100.23", "MALWARE", null),
+                rule(admin, "REPORT", "DOMAIN", "invoice-verify.example", "MALWARE", null),
+                rule(admin, "BYPASS", "DOMAIN", "docs.aster.example", null, null),
+                rule(admin, "BYPASS", "DOMAIN", "status.aster.example", null, null),
+                rule(colleague, "REPORT", "DOMAIN", "parcel-redelivery.example", "PHISHING", null),
+                rule(colleague, "REPORT", "PHONE", "+15550142", "SPAM", null),
+                rule(colleague, "REPORT", "EMAIL", "payroll@aster-payroll.example", "PHISHING", null),
+                rule(colleague, "REPORT", "URL", "https://wallet-verify.example/connect", "PHISHING", null),
+                rule(colleague, "REPORT", "FILE_HASH", "5f2b8a0c94d1e3b7a6c9f0e1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f",
+                        "MALWARE", null),
+                rule(as.get("EMPLOYEE"), "BYPASS", "DOMAIN", "delivery-status.example", null, 120),
+                rule(as.get("CONSUMER"), "REPORT", "PHONE", "+15550177", "SPAM", null));
+    }
+
+    private static Map<String, Object> rule(String as, String action, String type, String value, String category,
+            Integer ttlMinutes) {
+        Map<String, Object> rule = new java.util.LinkedHashMap<>();
+        rule.put("as", as);
+        rule.put("action", action);
+        rule.put("indicatorType", type);
+        rule.put("indicatorValue", value);
+        if (category != null) {
+            rule.put("threatCategory", category);
+        }
+        if (ttlMinutes != null) {
+            rule.put("ttlMinutes", ttlMinutes);
+        }
+        return rule;
     }
 
     // ---- seed.sql -------------------------------------------------------------------

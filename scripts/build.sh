@@ -20,9 +20,9 @@
 #                                     (builds whatever is missing first)
 #     --no-daemon                     don't start the firewall daemon
 #     --daemon-root                   real enforcement: run the daemon with sudo (iptables, /etc/hosts)
-#     --agent-token FILE              use this agent token instead of registering one with the demo admin
+#     --agent-token FILE              use this agent token instead of having the backend register one
 #     --demo                          load the official demo data from demo/ (run `scripts/build.sh demo` first)
-#                                     and create its threat rules through the API
+#                                     and have the backend apply demo/rules.json through RuleService
 #   Logs: .run/<module>.log (also streamed to the terminal with a [module] prefix).
 #   From another terminal: kill "$(cat .run/run.pid)" stops a run the same way as Ctrl+C.
 #
@@ -36,8 +36,9 @@
 #   GRADLE                gradle command to use; otherwise ./gradlew, or a system gradle 9 if the wrapper
 #                         distribution can't be downloaded
 #   NEXT_PUBLIC_API_MODE  baked into the web build; defaults to "live"
-#   OBSIDIAN_ADMIN_EMAIL / OBSIDIAN_ADMIN_PASSWORD
-#                         account `run` uses to register the daemon (default: the seeded demo admin)
+#   OBSIDIAN_ADMIN_EMAIL  admin whose organization `run` registers the local daemon in
+#                         (default: the dev seed's admin; with --demo, the official demo admin)
+#   NEXT_PUBLIC_TURNSTILE_SITE_KEY  dashboard's Turnstile site key; defaults to TURNSTILE_SITE_KEY in .env
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -154,12 +155,31 @@ build_daemon() {
   cp "$ROOT/daemon-rust/target/release/daemon-rust" "$DIST/daemon-rust"
 }
 
+# The Turnstile site key the dashboard needs: $NEXT_PUBLIC_TURNSTILE_SITE_KEY, else TURNSTILE_SITE_KEY
+# from the root .env (only that one line is read, the file isn't sourced).
+turnstile_site_key() {
+  if [ -n "${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}" ]; then
+    printf '%s' "$NEXT_PUBLIC_TURNSTILE_SITE_KEY"
+  elif [ -f "$ROOT/.env" ]; then
+    sed -n 's/^TURNSTILE_SITE_KEY=//p' "$ROOT/.env" | tail -1 | tr -d '\r"'"'"
+  fi
+}
+
+# What a web build bakes in; a --prod run rebuilds when it changed.
+web_build_settings() {
+  printf 'api=%s origin=%s turnstile=%s\n' "${NEXT_PUBLIC_API_MODE:-live}" "${SPRING_ORIGIN:-http://localhost:8080}" \
+    "$(turnstile_site_key)"
+}
+
 build_web() {
   need npm "install Node.js 20 or newer"
   [ "$SKIP_TESTS" = 1 ] || web_test
   web_install
-  step "web: next build (NEXT_PUBLIC_API_MODE=${NEXT_PUBLIC_API_MODE:-live})"
-  (cd "$ROOT/web-dashboard" && NEXT_PUBLIC_API_MODE="${NEXT_PUBLIC_API_MODE:-live}" npm run --silent build)
+  local site_key; site_key=$(turnstile_site_key)
+  step "web: next build (NEXT_PUBLIC_API_MODE=${NEXT_PUBLIC_API_MODE:-live}, Turnstile ${site_key:+on}${site_key:-off})"
+  (cd "$ROOT/web-dashboard" && NEXT_PUBLIC_API_MODE="${NEXT_PUBLIC_API_MODE:-live}" \
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY="$site_key" npm run --silent build)
+  web_build_settings > "$ROOT/web-dashboard/.next/obsidian-build-settings"
 }
 
 clean() {
@@ -263,36 +283,6 @@ token_accepted() {
   [ "$code" = 101 ]
 }
 
-# api_session EMAIL PASSWORD JAR: password sign-in into a cookie jar. The body goes through stdin,
-# so the password never shows up in `ps`.
-api_session() {
-  rm -f "$3"
-  printf '{"email":"%s","password":"%s"}' "$1" "$2" | curl -sf -c "$3" -o /dev/null \
-      -H 'Content-Type: application/json' --data-binary @- http://localhost:8080/api/v1/auth/login
-}
-
-# api_post JAR PATH JSON: a signed-in mutation, with the CSRF header the dashboard sends. Prints the response.
-api_post() {
-  local xsrf
-  xsrf=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$1")
-  printf '%s' "$3" | curl -sf -b "$1" -c "$1" -H "X-XSRF-TOKEN: $xsrf" -H 'Content-Type: application/json' \
-      --data-binary @- "http://localhost:8080$2"
-}
-
-# Registers this machine as an agent with the demo admin and writes the token file.
-register_agent() {
-  local token_file=$1 jar="$RUN/cookies.txt" host
-  local email=${OBSIDIAN_ADMIN_EMAIL:-avery.lin@aster.example} password=${OBSIDIAN_ADMIN_PASSWORD:-obsidian-demo-2026}
-  api_session "$email" "$password" "$jar" \
-    || fail "couldn't sign in as $email to register the daemon (Turnstile on, or no seed?); register it in the dashboard and pass --agent-token FILE"
-  host=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.\n-' '-')
-  api_post "$jar" /api/v1/agents "{\"hostname\":\"${host:-localhost}\"}" \
-    | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["token"])' > "$token_file" \
-    || fail "registering the daemon failed; register it in the dashboard and pass --agent-token FILE"
-  chmod 600 "$token_file"
-  rm -f "$jar"
-}
-
 # ---- official demo data -------------------------------------------------------------
 
 demo_generate() {
@@ -309,40 +299,11 @@ demo_generate() {
 }
 
 load_demo_credentials() {
-  [ -f "$DEMO_DIR/credentials.env" ] && [ -f "$DEMO_DIR/seed.sql" ] \
+  [ -f "$DEMO_DIR/credentials.env" ] && [ -f "$DEMO_DIR/seed.sql" ] && [ -f "$DEMO_DIR/rules.json" ] \
     || fail "no official demo data yet: run scripts/build.sh demo first"
   # shellcheck disable=SC1091 # generated: KEY=value lines, values are [a-z0-9@.-] only
   . "$DEMO_DIR/credentials.env"
-  export OBSIDIAN_ADMIN_EMAIL=$DEMO_ADMIN_EMAIL OBSIDIAN_ADMIN_PASSWORD=$DEMO_ADMIN_PASSWORD
-}
-
-# The demo's threat rules, created through the API so RuleService audits and publishes each one
-# (it is the only writer of threat_rules). Upserts, so running it again changes nothing.
-populate_demo_rules() {
-  step "official demo rules (through the API)"
-  local jar="$RUN/demo-cookies.txt" failed=0
-  rule() { # WHO_JAR ENDPOINT JSON
-    api_post "$1" "/api/v1/rules/$2" "$3" >/dev/null || { echo "  failed: $2 $3" >&2; failed=1; }
-  }
-  api_session "$DEMO_ADMIN_EMAIL" "$DEMO_ADMIN_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_ADMIN_EMAIL"
-  rule "$jar" report '{"indicatorType":"IP","indicatorValue":"203.0.113.45","threatCategory":"MALWARE"}'
-  rule "$jar" report '{"indicatorType":"IP","indicatorValue":"198.51.100.23","threatCategory":"MALWARE"}'
-  rule "$jar" report '{"indicatorType":"DOMAIN","indicatorValue":"invoice-verify.example","threatCategory":"MALWARE"}'
-  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"docs.aster.example"}'
-  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"status.aster.example"}'
-  api_session "$DEMO_COLLEAGUE_EMAIL" "$DEMO_COLLEAGUE_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_COLLEAGUE_EMAIL"
-  rule "$jar" report '{"indicatorType":"DOMAIN","indicatorValue":"parcel-redelivery.example","threatCategory":"PHISHING"}'
-  rule "$jar" report '{"indicatorType":"PHONE","indicatorValue":"+15550142","threatCategory":"SPAM"}'
-  rule "$jar" report '{"indicatorType":"EMAIL","indicatorValue":"payroll@aster-payroll.example","threatCategory":"PHISHING"}'
-  rule "$jar" report '{"indicatorType":"URL","indicatorValue":"https://wallet-verify.example/connect","threatCategory":"PHISHING"}'
-  rule "$jar" report '{"indicatorType":"FILE_HASH","indicatorValue":"5f2b8a0c94d1e3b7a6c9f0e1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f","threatCategory":"MALWARE"}'
-  api_session "$DEMO_EMPLOYEE_EMAIL" "$DEMO_EMPLOYEE_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_EMPLOYEE_EMAIL"
-  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"delivery-status.example","ttlMinutes":120}'
-  api_session "$DEMO_CONSUMER_EMAIL" "$DEMO_CONSUMER_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_CONSUMER_EMAIL"
-  rule "$jar" report '{"indicatorType":"PHONE","indicatorValue":"+15550177","threatCategory":"SPAM"}'
-  rm -f "$jar"
-  [ "$failed" = 0 ] || fail "some demo rules weren't created (is Turnstile on? create them with it off, then turn it on)"
-  echo "12 rules in place; testsafebrowsing.appspot.com is left unreported for the live demo"
+  export OBSIDIAN_ADMIN_EMAIL=$DEMO_ADMIN_EMAIL
 }
 
 run_all() {
@@ -361,6 +322,17 @@ run_all() {
     load_demo_credentials
     seed="$DEMO_DIR/seed.sql"
   fi
+  # Demo rules and the daemon's agent token are set up by the backend itself at startup
+  # (StartupBootstrap): a script can't sign in once Turnstile is on.
+  local boot_args=() token_file=${AGENT_TOKEN:-$RUN/agent.token}
+  [ "$USE_DEMO" = 1 ] && boot_args+=("--obsidian.bootstrap.rules=$DEMO_DIR/rules.json")
+  if [ "$WITH_DAEMON" = 1 ] && [ -z "$AGENT_TOKEN" ]; then
+    local host; host=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.\n-' '-')
+    boot_args+=("--obsidian.bootstrap.agent-token-file=$token_file"
+                "--obsidian.bootstrap.agent-admin=${OBSIDIAN_ADMIN_EMAIL:-avery.lin@aster.example}"
+                "--obsidian.bootstrap.agent-hostname=${host:-localhost}")
+  fi
+  local site_key; site_key=$(turnstile_site_key)
 
   if [ "$PROD" = 1 ]; then
     need docker "option --prod runs Postgres and Redis in Docker"
@@ -372,15 +344,30 @@ run_all() {
     (cd "$ROOT" && docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 \
         -U "${POSTGRES_USER:-obsidian}" -d "${POSTGRES_DB:-obsidian}" < "$seed") >/dev/null
     [ -f "$DIST/obsidian-backend.jar" ] || { SKIP_TESTS=1; build_backend; }
-    [ -f "$ROOT/web-dashboard/.next/BUILD_ID" ] || { SKIP_TESTS=1; build_web; }
+    if [ ! -f "$ROOT/web-dashboard/.next/BUILD_ID" ] \
+        || [ "$(cat "$ROOT/web-dashboard/.next/obsidian-build-settings" 2>/dev/null)" != "$(web_build_settings)" ]; then
+      SKIP_TESTS=1; build_web   # missing, or built with other API mode / origin / Turnstile key
+    fi
     step "starting backend (dist/obsidian-backend.jar)"
-    start backend "$ROOT" "$JAVA_HOME/bin/java" -jar "$DIST/obsidian-backend.jar"
+    start backend "$ROOT" "$JAVA_HOME/bin/java" -jar "$DIST/obsidian-backend.jar" "${boot_args[@]}"
   else
     step "starting backend (gradle bootTestRun: embedded Postgres + Redis, seed ${seed#"$ROOT"/})"
-    start backend "$ROOT/backend-spring" env OBSIDIAN_SEED_FILE="$seed" $GRADLE bootTestRun --console=plain -q
+    start backend "$ROOT/backend-spring" env OBSIDIAN_SEED_FILE="$seed" \
+        $GRADLE bootTestRun --console=plain -q --args="${boot_args[*]}"
   fi
   wait_for backend http://localhost:8080/api/v1/auth/me 240
-  [ "$USE_DEMO" = 0 ] || populate_demo_rules
+  if [ "$WITH_DAEMON" = 1 ] && [ -z "$AGENT_TOKEN" ]; then
+    # The startup setup runs just after the server opens its port; wait until it has written a token
+    # this database accepts (demo rules are applied before that).
+    local ok=0
+    for _ in $(seq 1 60); do
+      [ -s "$token_file" ] && token_accepted "$token_file" && { ok=1; break; }
+      kill -0 "${PIDS[backend]}" 2>/dev/null || break
+      sleep 1
+    done
+    [ "$ok" = 1 ] || { tail -n 30 "$RUN/backend.log" >&2; fail "the backend didn't set up the agent token (log: .run/backend.log)"; }
+    [ "$USE_DEMO" = 0 ] || echo "demo rules applied (demo/rules.json); testsafebrowsing.appspot.com is left for the live demo"
+  fi
 
   web_install
   if [ "$PROD" = 1 ]; then
@@ -388,23 +375,16 @@ run_all() {
     start web "$ROOT/web-dashboard" npm start
   else
     step "starting dashboard (next dev, live API)"
-    start web "$ROOT/web-dashboard" env NEXT_PUBLIC_API_MODE=live npm run dev
+    start web "$ROOT/web-dashboard" env NEXT_PUBLIC_API_MODE=live NEXT_PUBLIC_TURNSTILE_SITE_KEY="$site_key" npm run dev
   fi
   wait_for web http://localhost:3000/login 120
 
   if [ "$WITH_DAEMON" = 1 ]; then
     need cargo "install a Rust stable toolchain, or pass --no-daemon"
     [ -x "$ROOT/daemon-rust/target/release/daemon-rust" ] || (cd "$ROOT/daemon-rust" && cargo build --release --quiet)
-    local token_file=${AGENT_TOKEN:-$RUN/agent.token}
     if [ -n "$AGENT_TOKEN" ]; then
       token_accepted "$token_file" \
         || fail "the backend doesn't know the agent token in $AGENT_TOKEN (401); register the agent again on Endpoint Security"
-    elif [ -s "$token_file" ] && token_accepted "$token_file"; then
-      echo "reusing the agent token in .run/agent.token"
-    else
-      # No token yet, or one from another database (dev data is in memory; reset-demo.sh wipes Docker).
-      register_agent "$token_file"
-      echo "registered this machine as a new agent (token in .run/agent.token)"
     fi
     if [ "$DAEMON_ROOT" = 1 ]; then
       step "starting daemon (sudo: real iptables + /etc/hosts)"

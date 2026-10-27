@@ -95,7 +95,7 @@ Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,
 scripts/build.sh                           # test + package everything into dist/ (see --help)
 scripts/build.sh run [--prod]              # start API + dashboard + dry-run daemon; Ctrl+C stops all (logs in .run/)
 scripts/build.sh demo && scripts/build.sh run --demo   # official demo: random passwords in demo/ (gitignored), rich data
-cd backend-spring && gradle test           # 224 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
+cd backend-spring && gradle test           # 232 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
 cd backend-spring && gradle bootTestRun    # :8080 with embedded Postgres/Redis and scripts/seed.sql
 docker compose up -d                       # real Postgres + Redis (db/ mounted into initdb); scripts/reset-demo.sh reseeds
 cd backend-spring && ./gradlew bootRun     # :8080 against docker compose
