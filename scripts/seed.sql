@@ -18,14 +18,14 @@ INSERT INTO users (id, org_id, email, display_name, role, password_hash) VALUES
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO scan_logs (id, user_id, channel, sender, indicator_checked, verdict, vt_positives, created_at) VALUES
-  ('c1000000-0000-4000-8000-000000000000', 'b2e4d6f8-1a3c-4e5f-8a9b-0c1d2e3f4a5b', 'EMAIL', 'it-support@aster.example',
+  ('c1000000-0000-4000-8000-000000000000', (SELECT id FROM users WHERE email = 'avery.lin@aster.example'), 'EMAIL', 'it-support@aster.example',
    'https://status.aster.example', 'CLEAN', 0, NOW() - INTERVAL '380 minutes'),
-  ('c1000001-0000-4000-8000-000000000001', 'b2e4d6f8-1a3c-4e5f-8a9b-0c1d2e3f4a5b', 'EMAIL', 'billing@invoice-verify.example',
+  ('c1000001-0000-4000-8000-000000000001', (SELECT id FROM users WHERE email = 'avery.lin@aster.example'), 'EMAIL', 'billing@invoice-verify.example',
    '5f2b8a0c94d1e3b7a6c9f0e1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f', 'MALICIOUS', 31, NOW() - INTERVAL '256 minutes'),
-  ('c1000002-0000-4000-8000-000000000002', 'c3f5e7a9-2b4d-4f6a-9b0c-1d2e3f4a5b6c', 'SMS', '+15550100',
+  ('c1000002-0000-4000-8000-000000000002', (SELECT id FROM users WHERE email = 'priya.nair@aster.example'), 'SMS', '+15550100',
    'http://delivery-status.example/track/88231', 'SUSPICIOUS', 2, NOW() - INTERVAL '122 minutes'),
-  ('c1000003-0000-4000-8000-000000000003', 'c3f5e7a9-2b4d-4f6a-9b0c-1d2e3f4a5b6c', 'EMAIL', 'noreply@delivery-status.example',
+  ('c1000003-0000-4000-8000-000000000003', (SELECT id FROM users WHERE email = 'priya.nair@aster.example'), 'EMAIL', 'noreply@delivery-status.example',
    'https://delivery-status.example/parcel', 'PENDING', 0, NOW() - INTERVAL '131 minutes'),
-  ('c1000004-0000-4000-8000-000000000004', 'b2e4d6f8-1a3c-4e5f-8a9b-0c1d2e3f4a5b', 'EMAIL', 'payroll@aster-payroll.example',
+  ('c1000004-0000-4000-8000-000000000004', (SELECT id FROM users WHERE email = 'avery.lin@aster.example'), 'EMAIL', 'payroll@aster-payroll.example',
    'http://login-verify.aster-payroll.example/reset', 'MALICIOUS', 14, NOW() - INTERVAL '65 minutes')
 ON CONFLICT (id) DO NOTHING;

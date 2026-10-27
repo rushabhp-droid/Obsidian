@@ -518,7 +518,7 @@ Build only after the hour 8 milestone passes. If it slips, cut this module and k
   * [ ] Whoever finishes first (likely Dev 1): Code Guard webhook + gitleaks/OSV push scan + release hashes → VirusTotal + Check Run; Dev 4 adds the `code/` page
 
 ### Phase 5: UI Polish, Seed Data & Pitch Rehearsal (Hours 18:00 – 24:00)
-* [ ] Pre-populate PostgreSQL with realistic enterprise threat telemetry so charts and logs look rich
+* [x] Pre-populate PostgreSQL with realistic enterprise threat telemetry so charts and logs look rich (`scripts/build.sh demo` + `run --demo`)
 * [ ] **Hour 20: record a full backup demo video**
 * [ ] Prepare demo network: phone hotspot rather than venue Wi-Fi; secure DNS disabled in the demo browser
 * [ ] **Hour 22:30: code freeze**

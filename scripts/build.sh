@@ -8,6 +8,11 @@
 #   scripts/build.sh test             run every test suite, build nothing
 #   scripts/build.sh clean            remove dist/ and build outputs
 #
+# Official demo data
+#   scripts/build.sh demo             generate demo/: a random password per demo account (CREDENTIALS.md,
+#                                     credentials.env, both 0600 and gitignored) and seed.sql (telemetry, inbox)
+#   scripts/build.sh demo --force     rotate every demo password (reload the data afterwards)
+#
 # Run (foreground; Ctrl+C stops everything, the daemon first so it removes its blocks)
 #   scripts/build.sh run              dev: embedded Postgres + Redis with demo data (no Docker),
 #                                     API :8080, dashboard :3000 (next dev), daemon in --dry-run
@@ -16,6 +21,8 @@
 #     --no-daemon                     don't start the firewall daemon
 #     --daemon-root                   real enforcement: run the daemon with sudo (iptables, /etc/hosts)
 #     --agent-token FILE              use this agent token instead of registering one with the demo admin
+#     --demo                          load the official demo data from demo/ (run `scripts/build.sh demo` first)
+#                                     and create its threat rules through the API
 #   Logs: .run/<module>.log (also streamed to the terminal with a [module] prefix).
 #   From another terminal: kill "$(cat .run/run.pid)" stops a run the same way as Ctrl+C.
 #
@@ -42,6 +49,9 @@ PROD=0
 WITH_DAEMON=1
 DAEMON_ROOT=0
 AGENT_TOKEN=""
+USE_DEMO=0
+FORCE=0
+DEMO_DIR="$ROOT/demo"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,8 +59,10 @@ while [ $# -gt 0 ]; do
     --prod) PROD=1 ;;
     --no-daemon) WITH_DAEMON=0 ;;
     --daemon-root) DAEMON_ROOT=1 ;;
+    --demo) USE_DEMO=1 ;;
+    --force) FORCE=1 ;;
     --agent-token) [ $# -ge 2 ] || { echo "--agent-token needs a file" >&2; exit 2; }; AGENT_TOKEN=$(realpath "$2"); shift ;;
-    backend | daemon | web | test | clean | run) TARGETS+=("$1") ;;
+    backend | daemon | web | test | clean | run | demo) TARGETS+=("$1") ;;
     -h | --help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -251,22 +263,86 @@ token_accepted() {
   [ "$code" = 101 ]
 }
 
+# api_session EMAIL PASSWORD JAR: password sign-in into a cookie jar. The body goes through stdin,
+# so the password never shows up in `ps`.
+api_session() {
+  rm -f "$3"
+  printf '{"email":"%s","password":"%s"}' "$1" "$2" | curl -sf -c "$3" -o /dev/null \
+      -H 'Content-Type: application/json' --data-binary @- http://localhost:8080/api/v1/auth/login
+}
+
+# api_post JAR PATH JSON: a signed-in mutation, with the CSRF header the dashboard sends. Prints the response.
+api_post() {
+  local xsrf
+  xsrf=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$1")
+  printf '%s' "$3" | curl -sf -b "$1" -c "$1" -H "X-XSRF-TOKEN: $xsrf" -H 'Content-Type: application/json' \
+      --data-binary @- "http://localhost:8080$2"
+}
+
 # Registers this machine as an agent with the demo admin and writes the token file.
 register_agent() {
-  local token_file=$1 jar="$RUN/cookies.txt" xsrf host
+  local token_file=$1 jar="$RUN/cookies.txt" host
   local email=${OBSIDIAN_ADMIN_EMAIL:-avery.lin@aster.example} password=${OBSIDIAN_ADMIN_PASSWORD:-obsidian-demo-2026}
-  rm -f "$jar"
-  curl -sf -c "$jar" -o /dev/null -H 'Content-Type: application/json' \
-      -d "{\"email\":\"$email\",\"password\":\"$password\"}" http://localhost:8080/api/v1/auth/login \
+  api_session "$email" "$password" "$jar" \
     || fail "couldn't sign in as $email to register the daemon (Turnstile on, or no seed?); register it in the dashboard and pass --agent-token FILE"
-  xsrf=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
   host=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.\n-' '-')
-  curl -sf -b "$jar" -H "X-XSRF-TOKEN: $xsrf" -H 'Content-Type: application/json' \
-      -d "{\"hostname\":\"${host:-localhost}\"}" http://localhost:8080/api/v1/agents \
+  api_post "$jar" /api/v1/agents "{\"hostname\":\"${host:-localhost}\"}" \
     | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["token"])' > "$token_file" \
     || fail "registering the daemon failed; register it in the dashboard and pass --agent-token FILE"
   chmod 600 "$token_file"
   rm -f "$jar"
+}
+
+# ---- official demo data -------------------------------------------------------------
+
+demo_generate() {
+  pick_java; pick_gradle
+  step "official demo data → demo/"
+  if [ -f "$DEMO_DIR/credentials.env" ] && [ "$FORCE" = 0 ]; then
+    echo "demo/credentials.env already exists; keeping it (rotate with: scripts/build.sh demo --force)"
+    return
+  fi
+  local args="$DEMO_DIR"
+  [ "$FORCE" = 1 ] && args="$args --force"
+  (cd "$ROOT/backend-spring" && $GRADLE generateDemoData --console=plain -q --args="$args")
+  echo "credentials: demo/CREDENTIALS.md (never commit or share it)"
+}
+
+load_demo_credentials() {
+  [ -f "$DEMO_DIR/credentials.env" ] && [ -f "$DEMO_DIR/seed.sql" ] \
+    || fail "no official demo data yet: run scripts/build.sh demo first"
+  # shellcheck disable=SC1091 # generated: KEY=value lines, values are [a-z0-9@.-] only
+  . "$DEMO_DIR/credentials.env"
+  export OBSIDIAN_ADMIN_EMAIL=$DEMO_ADMIN_EMAIL OBSIDIAN_ADMIN_PASSWORD=$DEMO_ADMIN_PASSWORD
+}
+
+# The demo's threat rules, created through the API so RuleService audits and publishes each one
+# (it is the only writer of threat_rules). Upserts, so running it again changes nothing.
+populate_demo_rules() {
+  step "official demo rules (through the API)"
+  local jar="$RUN/demo-cookies.txt" failed=0
+  rule() { # WHO_JAR ENDPOINT JSON
+    api_post "$1" "/api/v1/rules/$2" "$3" >/dev/null || { echo "  failed: $2 $3" >&2; failed=1; }
+  }
+  api_session "$DEMO_ADMIN_EMAIL" "$DEMO_ADMIN_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_ADMIN_EMAIL"
+  rule "$jar" report '{"indicatorType":"IP","indicatorValue":"203.0.113.45","threatCategory":"MALWARE"}'
+  rule "$jar" report '{"indicatorType":"IP","indicatorValue":"198.51.100.23","threatCategory":"MALWARE"}'
+  rule "$jar" report '{"indicatorType":"DOMAIN","indicatorValue":"invoice-verify.example","threatCategory":"MALWARE"}'
+  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"docs.aster.example"}'
+  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"status.aster.example"}'
+  api_session "$DEMO_COLLEAGUE_EMAIL" "$DEMO_COLLEAGUE_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_COLLEAGUE_EMAIL"
+  rule "$jar" report '{"indicatorType":"DOMAIN","indicatorValue":"parcel-redelivery.example","threatCategory":"PHISHING"}'
+  rule "$jar" report '{"indicatorType":"PHONE","indicatorValue":"+15550142","threatCategory":"SPAM"}'
+  rule "$jar" report '{"indicatorType":"EMAIL","indicatorValue":"payroll@aster-payroll.example","threatCategory":"PHISHING"}'
+  rule "$jar" report '{"indicatorType":"URL","indicatorValue":"https://wallet-verify.example/connect","threatCategory":"PHISHING"}'
+  rule "$jar" report '{"indicatorType":"FILE_HASH","indicatorValue":"5f2b8a0c94d1e3b7a6c9f0e1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f","threatCategory":"MALWARE"}'
+  api_session "$DEMO_EMPLOYEE_EMAIL" "$DEMO_EMPLOYEE_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_EMPLOYEE_EMAIL"
+  rule "$jar" bypass '{"indicatorType":"DOMAIN","indicatorValue":"delivery-status.example","ttlMinutes":120}'
+  api_session "$DEMO_CONSUMER_EMAIL" "$DEMO_CONSUMER_PASSWORD" "$jar" || fail "couldn't sign in as $DEMO_CONSUMER_EMAIL"
+  rule "$jar" report '{"indicatorType":"PHONE","indicatorValue":"+15550177","threatCategory":"SPAM"}'
+  rm -f "$jar"
+  [ "$failed" = 0 ] || fail "some demo rules weren't created (is Turnstile on? create them with it off, then turn it on)"
+  echo "12 rules in place; testsafebrowsing.appspot.com is left unreported for the live demo"
 }
 
 run_all() {
@@ -280,6 +356,11 @@ run_all() {
   trap on_signal INT TERM
   echo $$ > "$RUN/run.pid"   # kill "$(cat .run/run.pid)" stops a run from another terminal
   pick_java; pick_gradle
+  local seed="$ROOT/scripts/seed.sql"
+  if [ "$USE_DEMO" = 1 ]; then
+    load_demo_credentials
+    seed="$DEMO_DIR/seed.sql"
+  fi
 
   if [ "$PROD" = 1 ]; then
     need docker "option --prod runs Postgres and Redis in Docker"
@@ -289,16 +370,17 @@ run_all() {
     step "postgres + redis (docker compose)"
     (cd "$ROOT" && docker compose up -d --wait)
     (cd "$ROOT" && docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 \
-        -U "${POSTGRES_USER:-obsidian}" -d "${POSTGRES_DB:-obsidian}" < scripts/seed.sql) >/dev/null
+        -U "${POSTGRES_USER:-obsidian}" -d "${POSTGRES_DB:-obsidian}" < "$seed") >/dev/null
     [ -f "$DIST/obsidian-backend.jar" ] || { SKIP_TESTS=1; build_backend; }
     [ -f "$ROOT/web-dashboard/.next/BUILD_ID" ] || { SKIP_TESTS=1; build_web; }
     step "starting backend (dist/obsidian-backend.jar)"
     start backend "$ROOT" "$JAVA_HOME/bin/java" -jar "$DIST/obsidian-backend.jar"
   else
-    step "starting backend (gradle bootTestRun: embedded Postgres + Redis, demo seed)"
-    start backend "$ROOT/backend-spring" $GRADLE bootTestRun --console=plain -q
+    step "starting backend (gradle bootTestRun: embedded Postgres + Redis, seed ${seed#"$ROOT"/})"
+    start backend "$ROOT/backend-spring" env OBSIDIAN_SEED_FILE="$seed" $GRADLE bootTestRun --console=plain -q
   fi
   wait_for backend http://localhost:8080/api/v1/auth/me 240
+  [ "$USE_DEMO" = 0 ] || populate_demo_rules
 
   web_install
   if [ "$PROD" = 1 ]; then
@@ -338,7 +420,11 @@ run_all() {
     kill -0 "${PIDS[daemon]}" 2>/dev/null || { tail -n 20 "$RUN/daemon.log" >&2; fail "daemon exited (log: .run/daemon.log)"; }
   fi
 
-  step "running — open http://localhost:3000 (sign in as avery.lin@aster.example / obsidian-demo-2026). Ctrl+C stops everything."
+  if [ "$USE_DEMO" = 1 ]; then
+    step "running the official demo — open http://localhost:3000 and sign in as $DEMO_ADMIN_EMAIL (passwords: demo/CREDENTIALS.md). Ctrl+C stops everything."
+  else
+    step "running — open http://localhost:3000 (sign in as avery.lin@aster.example / obsidian-demo-2026). Ctrl+C stops everything."
+  fi
   echo "the Android app isn't built yet; its prototype is docs/prototype/android.html"
   tail -n +1 -F "$RUN"/*.log 2>/dev/null | awk '
       /^==> .* <==$/ { name = $2; sub(/.*\//, "", name); sub(/\.log$/, "", name); next }
@@ -368,6 +454,7 @@ for target in "${TARGETS[@]}"; do
     daemon) build_daemon ;;
     web) build_web ;;
     test) pick_java; pick_gradle; backend_test; daemon_test; web_test ;;
+    demo) demo_generate ;;
     clean) clean ;;
   esac
 done

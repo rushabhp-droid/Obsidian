@@ -6,7 +6,7 @@ import org.springframework.boot.SpringApplication;
 
 /**
  * Runs the backend on :8080 against an embedded PostgreSQL 16 and an in-process
- * Redis, seeded with scripts/seed.sql, so no Docker is needed:
+ * Redis, seeded with scripts/seed.sql (or $OBSIDIAN_SEED_FILE), so no Docker is needed:
  * {@code cd backend-spring && gradle bootTestRun}. Data is gone when it stops.
  */
 public final class DevServer {
@@ -15,7 +15,9 @@ public final class DevServer {
 
     public static void main(String[] args) {
         TestInfra.start();
-        TestInfra.applySchema(Path.of("..", "scripts", "seed.sql"));
+        // OBSIDIAN_SEED_FILE: another seed instead, e.g. the official demo (scripts/build.sh run --demo).
+        String seed = System.getenv("OBSIDIAN_SEED_FILE");
+        TestInfra.applySchema(seed == null || seed.isBlank() ? Path.of("..", "scripts", "seed.sql") : Path.of(seed));
         System.setProperty("spring.datasource.url", TestInfra.jdbcUrl());
         System.setProperty("spring.datasource.username", "postgres");
         System.setProperty("spring.datasource.password", "postgres");

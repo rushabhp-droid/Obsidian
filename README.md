@@ -188,6 +188,49 @@ If a module crashes, the others are stopped and its log tail is printed. If Turn
 
 The sections below start the same pieces by hand.
 
+### Official demo: credentials and data
+The dev seed shares one password (`obsidian-demo-2026`) that is committed in this repo, so it is fine on localhost but not for a demo on a public URL. Generate private demo data instead:
+
+```sh
+scripts/build.sh demo                     # once: writes demo/ (gitignored)
+scripts/build.sh run --demo               # dev mode with the official data
+scripts/build.sh run --prod --demo        # or Docker + built artifacts (scripts/reset-demo.sh --official wipes and reloads)
+scripts/build.sh demo --force             # rotate every password, then run --demo again
+```
+
+`demo/` holds three files:
+- `CREDENTIALS.md`: accounts, passwords and a demo cheat sheet. Mode 0600; never commit, share or screenshot it.
+- `credentials.env`: the same passwords in machine-readable form, used by `run --demo`.
+- `seed.sql`: the data. Passwords appear in it only as Argon2id hashes.
+
+| Account | Role | Used for |
+| --- | --- | --- |
+| `avery.lin@aster.example` | Admin | Presenter: dashboard, rule editor, Bypass, agents, passkey sign-in |
+| `priya.nair@aster.example` | Employee | The phone: reports a link, crowd immunity |
+| `marcus.okafor@aster.example` | Employee | A colleague whose reports block for everyone |
+| `judge@aster.example` | Admin | Hand to judges who want to try it |
+| `riley.chen@mail.aster.example` | Consumer | Personal rules, no organization |
+
+Each gets its own random password: 20 characters from an unambiguous alphabet, about 99 bits. Reloading the seed after `--force` updates the passwords in place.
+
+What the data contains:
+- **About a day of scan telemetry:** 140 verdicts across email, SMS, WhatsApp and the network, with timestamps relative to load time so it always looks recent.
+- **An Email Security inbox:**
+  - verified-official GitHub and Google alerts;
+  - a payroll phish with a link flagged at 14 detections;
+  - invoice malware at 31 detections;
+  - a parcel phish that passes SPF, DKIM and DMARC but isn't official, because the domain is attacker-owned; its link stays `PENDING`;
+  - internal mail.
+- **12 threat rules:** `run --demo` creates them through the API, so each one is audited and published like a real change:
+  - admin blocks for two TEST-NET IPs and `invoice-verify.example`, and admin allows for `docs` and `status.aster.example`;
+  - a colleague's reports of a domain, a phone number, a sender, a URL and a malware hash;
+  - Priya's 2-hour personal bypass and Riley's personal spam block.
+- **The daemon:** after connecting, it blocks 2 IPs and 2 domains.
+
+`testsafebrowsing.appspot.com` is left unreported, so you can report it live (TODO.md §8). Fictional names use the reserved `.example` domain and TEST-NET IPs, so nothing real gets blocked.
+
+Turnstile has to be off while `run --demo` creates the rules (it signs in through the API). Create them first, then set `TURNSTILE_SECRET_KEY` and restart. With `--prod` the rules stay in the Docker volume.
+
 ### What runs where
 
 | Process | Directory | Port | Needs |
@@ -381,6 +424,7 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
 | Daemon logs `refused the agent token (401)` | The token belongs to another database (dev vs `--prod`, or after `reset-demo.sh`). `build.sh run` now checks and re-registers by itself; for a daemon started by hand, register the agent again and replace the token file |
 | `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'`; a previous `build.sh run` stops with `kill "$(cat .run/run.pid)"` |
+| `build.sh run --demo`: "no official demo data yet" | Run `scripts/build.sh demo` first |
 | `build.sh run`: "couldn't sign in as … to register the daemon" | Turnstile is on or the seed isn't loaded: register an agent in the dashboard and pass `--agent-token FILE` |
 
 ---

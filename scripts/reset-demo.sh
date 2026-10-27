@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wipes Postgres and Redis, recreates the schema, loads the demo seed.
-# Run from the repo root. Restart Spring afterwards.
+# Wipes Postgres and Redis, recreates the schema, loads the dev seed (scripts/seed.sql), or with
+# --official the generated official demo seed (demo/seed.sql). Restart Spring afterwards.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 POSTGRES_USER=${POSTGRES_USER:-obsidian}
@@ -8,6 +8,16 @@ POSTGRES_DB=${POSTGRES_DB:-obsidian}
 
 docker compose down -v
 docker compose up -d --wait
-docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < scripts/seed.sql
-echo "Demo data loaded. Accounts: avery.lin@aster.example (admin), priya.nair@aster.example (employee),"
-echo "riley.chen@mail.example (consumer); password obsidian-demo-2026. Now run scripts/prewarm-vt.sh."
+SEED=scripts/seed.sql
+if [ "${1:-}" = "--official" ]; then
+  SEED=demo/seed.sql
+  [ -f "$SEED" ] || { echo "no demo/seed.sql: run scripts/build.sh demo first" >&2; exit 1; }
+fi
+docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$SEED"
+if [ "$SEED" = scripts/seed.sql ]; then
+  echo "Dev data loaded. Accounts: avery.lin@aster.example (admin), priya.nair@aster.example (employee),"
+  echo "riley.chen@mail.example (consumer); password obsidian-demo-2026."
+else
+  echo "Official demo data loaded; passwords are in demo/CREDENTIALS.md. Start with: scripts/build.sh run --prod --demo"
+fi
+echo "Then run scripts/prewarm-vt.sh."

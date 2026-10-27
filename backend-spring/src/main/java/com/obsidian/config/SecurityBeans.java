@@ -9,9 +9,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration(proxyBeanMethods = false)
 public class SecurityBeans {
 
-    /** Argon2id: 16-byte salt, 32-byte hash, parallelism 1, 19 MiB, 2 iterations (TODO.md Module 1). */
     @Bean
     PasswordEncoder passwordEncoder() {
+        return argon2id();
+    }
+
+    /** Argon2id: 16-byte salt, 32-byte hash, parallelism 1, 19 MiB, 2 iterations (TODO.md Module 1). */
+    public static PasswordEncoder argon2id() {
         return new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
     }
 

@@ -68,3 +68,11 @@ tasks.withType<Test>().configureEach {
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootTestRun") {
     mainClass.set("com.obsidian.DevServer")
 }
+
+// `gradle -q generateDemoData --args="../demo [--force]"`: official demo credentials + seed
+// (scripts/build.sh demo wraps this). Writes into the gitignored demo/ directory.
+tasks.register<JavaExec>("generateDemoData") {
+    description = "Generates demo/CREDENTIALS.md, demo/credentials.env and demo/seed.sql"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.obsidian.demo.DemoDataGenerator")
+}

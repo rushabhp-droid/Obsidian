@@ -28,3 +28,5 @@ mobile-android/local.properties
 # scripts/build.sh output and `run` logs
 dist/
 .run/
+# Official demo credentials and seed (scripts/build.sh demo): never commit
+/demo/

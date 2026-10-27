@@ -94,7 +94,8 @@ Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,
 ```sh
 scripts/build.sh                           # test + package everything into dist/ (see --help)
 scripts/build.sh run [--prod]              # start API + dashboard + dry-run daemon; Ctrl+C stops all (logs in .run/)
-cd backend-spring && gradle test           # 220 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
+scripts/build.sh demo && scripts/build.sh run --demo   # official demo: random passwords in demo/ (gitignored), rich data
+cd backend-spring && gradle test           # 224 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
 cd backend-spring && gradle bootTestRun    # :8080 with embedded Postgres/Redis and scripts/seed.sql
 docker compose up -d                       # real Postgres + Redis (db/ mounted into initdb); scripts/reset-demo.sh reseeds
 cd backend-spring && ./gradlew bootRun     # :8080 against docker compose
@@ -103,7 +104,7 @@ cd daemon-rust && cargo test && cargo build --release && sudo ./target/release/d
 cd mobile-android && ./gradlew installDebug   # not built yet
 ```
 
-On a machine whose default JDK is newer than Byte Buddy supports (e.g. 27), run Gradle with `JAVA_HOME` pointing at JDK 21–25. Demo accounts in the seed use the password `obsidian-demo-2026`.
+On a machine whose default JDK is newer than Byte Buddy supports (e.g. 27), run Gradle with `JAVA_HOME` pointing at JDK 21–25. Dev seed accounts use the committed password `obsidian-demo-2026`; the official demo uses the generated, gitignored `demo/CREDENTIALS.md` instead, so never put those passwords in the repo.
 
 ## Demo gotchas
 
