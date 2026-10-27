@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsidian Mobile - Cybersecurity App</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Roboto+Flex:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#00696D',
+            onPrimary: '#FFFFFF',
+            primaryContainer: '#6FF6FC',
+            onPrimaryContainer: '#002022',
+            surface: '#FAFDFD',
+            onSurface: '#191C1D',
+            surfaceVariant: '#DAE4E5',
+            onSurfaceVariant: '#3F4849',
+            surfaceContainerHighest: '#E0E3E3',
+            surfaceContainer: '#EFF3F3',
+            outline: '#6F7979',
+            outlineVariant: '#BFC8C8',
+            navBarBg: '#EEF5F4',
+            activeIndicator: '#B2EBEC',
+            onActiveIndicator: '#002021',
+            // Semantics:
+            scam: '#BA1A1A',
+            scamContainer: '#FFEDEA',
+            onScamContainer: '#410002',
+            suspicious: '#7D5700',
+            suspiciousContainer: '#FFDEA0',
+            onSuspiciousContainer: '#271900',
+            neutralContainer: '#DAE4E5',
+            neutralVariant: '#3F4849'
+          },
+          fontFamily: {
+            sans: ['"Roboto Flex"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          borderRadius: {
+            'm3-button': '8px',
+            'm3-chip': '8px',
+            'm3-badge': '8px',
+            'm3-card': '12dp',
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: 'Roboto Flex', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      color: #191C1D;
+      -webkit-font-smoothing: antialiased;
+    }
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      display: inline-block;
+      line-height: 1;
+      text-transform: none;
+      letter-spacing: normal;
+      word-wrap: normal;
+      white-space: nowrap;
+      direction: ltr;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .fill-icon {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+    }
+    /* M3 Strict Shapes */
+    .m3-btn {
+      border-radius: 8px !important;
+    }
+    .m3-card {
+      border-radius: 12px !important;
+    }
+    .m3-chip {
+      border-radius: 8px !important;
+    }
+
+    /* Custom M3 Switch */
+    .m3-switch {
+      width: 52px;
+      height: 32px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .m3-switch.on {
+      background-color: #00696D;
+      justify-content: flex-end;
+    }
+    .m3-switch.off {
+      background-color: #DAE4E5;
+      border: 2px solid #6F7979;
+      justify-content: flex-start;
+    }
+    .m3-switch-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 12px;
+      background-color: #FFFFFF;
+      transition: all 0.2s ease;
+    }
+    .m3-switch.off .m3-switch-thumb {
+      background-color: #6F7979;
+      width: 16px;
+      height: 16px;
+      margin-left: 2px;
+    }
+
+    /* Phone viewport frame */
+    .phone-mockup {
+      width: 390px;
+      height: 844px;
+      border-radius: 40px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 12px #1e293b, 0 0 0 14px #334155;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      background-color: #FAFDFD;
+    }
+    .phone-notch {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 24px;
+      background-color: #1e293b;
+      border-bottom-left-radius: 16px;
+      border-bottom-right-radius: 16px;
+      z-index: 50;
+    }
+    /* Hide scrollbar */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col lg:flex-row items-center justify-center p-4 lg:p-8 gap-8">
+
+  <!-- Mobile Phone Mockup -->
+  <div class="phone-mockup relative">
+    <div class="phone-notch"></div>
+
+    <!-- Screen 01: Lock Screen -->
+    <div id="screen-lock" class="flex-1 flex flex-col justify-between p-4 bg-[#FAFDFD] z-10">
+      <!-- Status bar -->
+      <div class="w-full h-8 flex justify-between items-center text-xs font-semibold text-[#191C1D] pt-1 px-2 select-none">
+        <span>9:30</span>
+        <div class="flex items-center space-x-1.5">
+          <span class="material-symbols-outlined text-[17px]">wifi</span>
+          <span class="material-symbols-outlined text-[17px]">signal_cellular_alt</span>
+          <span class="material-symbols-outlined text-[17px]">battery_full</span>
+        </div>
+      </div>
+
+      <!-- Center content -->
+      <div class="flex flex-col items-center justify-center text-center px-4 -mt-12">
+        <div class="mb-4 text-[#00696D]">
+          <span class="material-symbols-outlined text-[48px]">lock</span>
+        </div>
+        <h1 class="text-[24px] font-normal text-[#191C1D] mb-2">Obsidian</h1>
+        <p class="text-[14px] text-[#3F4849] mb-8 max-w-[280px]">Unlock to view your message checks.</p>
+        
+        <button id="btn-unlock" class="m3-btn inline-flex items-center justify-center h-10 px-6 bg-[#00696D] text-white hover:bg-[#00575a] transition-colors">
+          <span class="material-symbols-outlined text-[20px] mr-2">fingerprint</span>
+          <span class="text-[14px] font-medium tracking-[0.1px]">Unlock</span>
+        </button>
+      </div>
+
+      <div class="h-8"></div>
+    </div>
+
+    <!-- Main App Container (Screens 02-09) -->
+    <div id="app-container" class="flex-1 flex flex-col hidden bg-[#FAFDFD]">
+      <!-- Status bar -->
+      <header class="w-full h-8 px-6 pt-2 flex justify-between items-center text-xs font-semibold text-[#191C1D] select-none shrink-0 z-20">
+        <span id="status-bar-time">9:30</span>
+        <div class="flex items-center space-x-1.5 opacity-90">
+          <span class="material-symbols-outlined text-[17px]">wifi</span>
+          <span class="material-symbols-outlined text-[17px]">signal_cellular_alt</span>
+          <span class="material-symbols-outlined text-[17px]">battery_full</span>
+        </div>
+      </header>
+
+      <!-- Heads-Up Push Notification Alert (Toast) -->
+      <div id="heads-up-alert" class="hidden absolute top-10 left-4 right-4 bg-[#BA1A1A] text-white p-4 rounded-[12px] shadow-2xl z-50 transition-all duration-300">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-white text-[24px]">dangerous</span>
+          <div class="flex-1">
+            <h4 class="text-sm font-semibold tracking-wide" id="alert-title">Malicious Link Intercepted!</h4>
+            <p class="text-xs text-white/90 mt-0.5" id="alert-body">Link from Rahul blocked before opening.</p>
+          </div>
+          <button id="alert-close-btn" class="text-white/80 hover:text-white">
+            <span class="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Main Content -->
+      <main id="main-scroll" class="flex-1 overflow-y-auto no-scrollbar px-4 pt-1 pb-4">
+
+        <!-- Screen 02: Home Setup (Message checking is off) -->
+        <div id="screen-home-setup" class="hidden flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <h1 class="text-[22px] font-normal text-[#191C1D]">Obsidian</h1>
+            <button class="nav-account-btn w-10 h-10 flex items-center justify-center text-[#3F4849]">
+              <span class="material-symbols-outlined text-[24px]">account_circle</span>
+            </button>
+          </div>
+
+          <div class="m3-card bg-[#E0E3E3] p-4 flex flex-col gap-4 mt-2">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#3F4849] text-[24px]">notifications_off</span>
+              <div>
+                <h2 class="text-[16px] font-medium text-[#191C1D]">Message checking is off</h2>
+                <p class="text-[14px] text-[#3F4849] mt-1 leading-snug">
+                  Obsidian needs notification access to check links in WhatsApp and SMS. For saved contacts, only links are checked. Message text stays on this phone.
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button id="btn-turn-on-checking" class="m3-btn h-9 px-4 bg-[#00696D] text-white text-[13px] font-medium">
+                Turn on message checking
+              </button>
+              <button id="btn-learn-access" class="m3-btn h-9 px-3 text-[#00696D] text-[13px] font-medium hover:bg-[#00696D]/10">
+                Learn what we access
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-6">
+            <h3 class="text-[14px] font-medium text-[#191C1D] px-1 mb-2">Recent checks</h3>
+            <div class="py-12 text-center text-[#3F4849] text-sm">
+              No messages checked yet.
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 03: Home (Message checking is on) -->
+        <div id="screen-home" class="flex flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <h1 class="text-[22px] font-normal text-[#191C1D]">Obsidian</h1>
+            <button class="nav-account-btn w-10 h-10 flex items-center justify-center text-[#3F4849]">
+              <span class="material-symbols-outlined text-[24px]">account_circle</span>
+            </button>
+          </div>
+
+          <!-- Status Card -->
+          <div class="m3-card bg-[#E0E3E3] p-4 flex items-start gap-3 mt-1">
+            <span class="material-symbols-outlined text-[#00696D] text-[24px] mt-0.5">verified_user</span>
+            <div>
+              <h2 class="text-[16px] font-medium text-[#191C1D]">Message checking is on</h2>
+              <p class="text-[14px] text-[#3F4849] mt-0.5 leading-snug">Links in WhatsApp and SMS messages are checked as they arrive.</p>
+            </div>
+          </div>
+
+          <!-- Recent Checks -->
+          <div class="mt-6 flex-1 flex flex-col">
+            <h3 class="text-[14px] font-medium text-[#191C1D] px-1 mb-2">Recent checks</h3>
+            <div id="home-recent-list" class="flex flex-col">
+              <!-- Dynamically populated -->
+            </div>
+
+            <button id="btn-see-all-messages" class="m3-btn w-full h-10 mt-6 bg-[#00696D] text-white text-sm font-medium hover:bg-[#00575a] transition-colors">
+              See all messages
+            </button>
+          </div>
+        </div>
+
+        <!-- Screen 04: Messages List & Triage -->
+        <div id="screen-messages" class="hidden flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <h1 class="text-[22px] font-normal text-[#191C1D]">Messages</h1>
+            <button id="btn-toggle-search" class="w-10 h-10 flex items-center justify-center text-[#3F4849]">
+              <span class="material-symbols-outlined text-[24px]">search</span>
+            </button>
+          </div>
+
+          <!-- Search Input Bar -->
+          <div id="search-bar-container" class="hidden mb-3">
+            <div class="flex items-center bg-[#E0E3E3] px-3 py-1.5 rounded-[4px] border border-[#6F7979]">
+              <span class="material-symbols-outlined text-[#3F4849] text-[20px] mr-2">search</span>
+              <input type="text" id="messages-search-input" placeholder="Search sender, link, or domain..." class="bg-transparent border-none outline-none text-sm text-[#191C1D] w-full">
+              <button id="btn-clear-search" class="text-[#3F4849] hover:text-[#191C1D]">
+                <span class="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Chips (8dp strict radius) -->
+          <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 mb-3">
+            <button class="filter-chip active m3-chip h-8 px-3 flex items-center gap-1.5 bg-[#6FF6FC] text-[#002022] text-xs font-medium" data-filter="ALL">
+              <span class="material-symbols-outlined text-[16px]">check</span>
+              <span>All</span>
+            </button>
+            <button class="filter-chip m3-chip h-8 px-3 flex items-center gap-1.5 border border-[#BFC8C8] text-[#3F4849] text-xs font-medium" data-filter="SCAM">
+              <span>Scam</span>
+            </button>
+            <button class="filter-chip m3-chip h-8 px-3 flex items-center gap-1.5 border border-[#BFC8C8] text-[#3F4849] text-xs font-medium" data-filter="SUSPICIOUS">
+              <span>Suspicious</span>
+            </button>
+            <button class="filter-chip m3-chip h-8 px-3 flex items-center gap-1.5 border border-[#BFC8C8] text-[#3F4849] text-xs font-medium" data-filter="CHECKING">
+              <span>Checking</span>
+            </button>
+          </div>
+
+          <!-- Messages Grouped List -->
+          <div id="messages-full-list" class="flex flex-col">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Screen 05: Message Check Detail -->
+        <div id="screen-detail" class="hidden flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <div class="flex items-center gap-2">
+              <button id="btn-detail-back" class="w-10 h-10 flex items-center justify-center text-[#191C1D]">
+                <span class="material-symbols-outlined text-[24px]">arrow_back</span>
+              </button>
+              <h1 class="text-[20px] font-normal text-[#191C1D]">Message check</h1>
+            </div>
+            <button class="w-10 h-10 flex items-center justify-center text-[#3F4849]">
+              <span class="material-symbols-outlined text-[24px]">more_vert</span>
+            </button>
+          </div>
+
+          <!-- Threat Banner (12dp rounded) -->
+          <div id="detail-banner" class="m3-card bg-[#FFEDEA] p-4 flex items-start gap-3 mt-1">
+            <span class="material-symbols-outlined text-[#BA1A1A] text-[28px]">dangerous</span>
+            <div>
+              <h2 class="text-[17px] font-medium text-[#BA1A1A]" id="detail-banner-title">This link is a known scam</h2>
+              <p class="text-[13px] text-[#191C1D] mt-1 leading-snug" id="detail-banner-desc">
+                We blocked it before it could open. Don't enter any passwords or one-time codes on this site.
+              </p>
+            </div>
+          </div>
+
+          <!-- Details Section -->
+          <div class="mt-6">
+            <h3 class="text-[14px] font-medium text-[#191C1D] mb-3">Details</h3>
+
+            <div class="flex justify-between items-start py-2.5 border-b border-[#BFC8C8]/40">
+              <span class="text-sm text-[#3F4849] font-medium w-24">From</span>
+              <div class="flex-1 text-right">
+                <div class="text-sm font-normal text-[#191C1D]" id="detail-from-name">Rahul</div>
+                <div class="text-xs text-[#3F4849]" id="detail-from-meta">Saved contact · WhatsApp</div>
+              </div>
+            </div>
+
+            <div class="flex justify-between items-start py-2.5 border-b border-[#BFC8C8]/40">
+              <span class="text-sm text-[#3F4849] font-medium w-24">Link</span>
+              <div class="flex-1 text-right font-mono text-[13px] text-[#191C1D] break-all" id="detail-link">
+                secure-login-verify.co/kyc-update
+              </div>
+            </div>
+
+            <div class="flex justify-between items-start py-2.5 border-b border-[#BFC8C8]/40">
+              <span class="text-sm text-[#3F4849] font-medium w-24">Received</span>
+              <div class="flex-1 text-right text-sm text-[#191C1D]" id="detail-received">
+                Today, 14:32
+              </div>
+            </div>
+
+            <div class="flex justify-between items-start py-2.5 border-b border-[#BFC8C8]/40">
+              <span class="text-sm text-[#3F4849] font-medium w-24">Checked by</span>
+              <div class="flex-1 text-right text-xs text-[#3F4849]" id="detail-checked-by">
+                Reported by other users and flagged by security scanners
+              </div>
+            </div>
+          </div>
+
+          <!-- Privacy Guarantee Card (12dp) -->
+          <div class="m3-card bg-[#E0E3E3] p-4 flex items-center gap-3 mt-6">
+            <span class="material-symbols-outlined text-[#3F4849] text-[20px]">lock</span>
+            <p class="text-xs text-[#3F4849] leading-tight">
+              Only the link was checked. Your message text stayed on this phone.
+            </p>
+          </div>
+
+          <!-- Actions -->
+          <div class="mt-8 flex flex-col gap-3">
+            <button id="btn-action-report" class="m3-btn w-full h-10 bg-[#00696D] text-white text-sm font-medium hover:bg-[#00575a] transition-colors">
+              Report as scam
+            </button>
+            <button id="btn-action-trust" class="m3-btn w-full h-10 border border-[#6F7979] text-[#191C1D] text-sm font-medium hover:bg-[#00696D]/5 transition-colors">
+              I trust this link
+            </button>
+            <p class="text-center text-xs text-[#3F4849] mt-0.5">Trusting this link allows it on this device.</p>
+          </div>
+        </div>
+
+        <!-- Screen 06: Report Confirmed -->
+        <div id="screen-report-confirmed" class="hidden flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <div class="flex items-center gap-2">
+              <button id="btn-confirmed-back" class="w-10 h-10 flex items-center justify-center text-[#191C1D]">
+                <span class="material-symbols-outlined text-[24px]">arrow_back</span>
+              </button>
+              <h1 class="text-[20px] font-normal text-[#191C1D]">Message check</h1>
+            </div>
+            <button class="w-10 h-10 flex items-center justify-center text-[#3F4849]">
+              <span class="material-symbols-outlined text-[24px]">more_vert</span>
+            </button>
+          </div>
+
+          <!-- Confirmed Block Card -->
+          <div class="m3-card bg-[#E0E3E3] p-4 flex items-start gap-3 mt-2">
+            <span class="material-symbols-outlined text-[#BA1A1A] text-[24px]">block</span>
+            <div>
+              <h2 class="text-[16px] font-medium text-[#191C1D]">Reported</h2>
+              <p class="text-[14px] text-[#3F4849] mt-0.5 leading-snug">
+                This link is now blocked on this device and for your organization.
+              </p>
+            </div>
+          </div>
+
+          <!-- Details Card -->
+          <div class="mt-6 border border-[#BFC8C8]/50 rounded-[12px] p-4 bg-white">
+            <div class="flex justify-between items-start py-2 border-b border-[#BFC8C8]/30">
+              <span class="text-sm text-[#3F4849]">From</span>
+              <span class="text-sm font-medium text-[#191C1D]" id="confirmed-from">Rahul</span>
+            </div>
+            <div class="flex justify-between items-start py-2 border-b border-[#BFC8C8]/30">
+              <span class="text-sm text-[#3F4849]">Link</span>
+              <span class="text-xs font-mono text-[#191C1D]" id="confirmed-link">secure-login-verify.co/kyc-update</span>
+            </div>
+            <div class="flex justify-between items-start py-2">
+              <span class="text-sm text-[#3F4849]">Received</span>
+              <span class="text-sm text-[#191C1D]" id="confirmed-received">Today, 14:32</span>
+            </div>
+          </div>
+
+          <!-- Undo Button -->
+          <div class="mt-8">
+            <button id="btn-undo-report" class="m3-btn w-full h-10 border border-[#6F7979] text-[#191C1D] text-sm font-medium hover:bg-[#00696D]/5">
+              Undo report
+            </button>
+          </div>
+        </div>
+
+        <!-- Screens 07 & 08: Rules Screen (Blocked / Trusted) -->
+        <div id="screen-rules" class="hidden flex-col">
+          <div class="h-14 flex items-center justify-between select-none">
+            <h1 class="text-[22px] font-normal text-[#191C1D]">Rules</h1>
+            <button id="btn-add-rule-dialog" class="w-10 h-10 flex items-center justify-center text-[#191C1D] hover:bg-[#00696D]/10 rounded-[8px]">
+              <span class="material-symbols-outlined text-[24px]">add</span>
+            </button>
+          </div>
+
+          <!-- Segmented Tab Switcher (8dp radius) -->
+          <div class="flex gap-2 py-1 mb-2">
+            <button id="tab-rules-blocked" class="rules-tab-btn active flex-1 h-10 rounded-[8px] bg-[#6FF6FC] text-[#002022] text-sm font-medium flex items-center justify-center gap-1.5">
+              <span class="material-symbols-outlined text-[16px]">check</span>
+              <span>Blocked</span>
+            </button>
+            <button id="tab-rules-trusted" class="rules-tab-btn flex-1 h-10 rounded-[8px] border border-[#BFC8C8] text-[#3F4849] text-sm font-medium flex items-center justify-center gap-1.5">
+              <span>Trusted</span>
+            </button>
+          </div>
+
+          <!-- Explanatory note -->
+          <p id="rules-explanatory-text" class="text-xs text-[#3F4849] mt-1 mb-3 px-1 leading-snug">
+            Blocked links and senders are stopped on this device and reported to your organization.
+          </p>
+
+          <!-- Rules list -->
+          <div id="rules-list-container" class="flex flex-col">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Screen 09: Settings Screen -->
+        <div id="screen-settings" class="hidden flex-col">
+          <div class="h-14 flex items-center select-none">
+            <h1 class="text-[22px] font-normal text-[#191C1D]">Settings</h1>
+          </div>
+
+          <!-- Protection Section -->
+          <div class="py-2">
+            <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">Protection</span>
+            
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">notifications</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">Notification access</div>
+                  <div class="text-xs text-[#3F4849]" id="settings-notif-label">On</div>
+                </div>
+              </div>
+              <div id="toggle-notif-access" class="m3-switch on" aria-label="Notification access toggle">
+                <div class="m3-switch-thumb"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">fingerprint</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">Lock with fingerprint</div>
+                  <div class="text-xs text-[#3F4849]">Required to open the app and edit rules</div>
+                </div>
+              </div>
+              <div id="toggle-fingerprint-lock" class="m3-switch on" aria-label="Lock with fingerprint toggle">
+                <div class="m3-switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="h-[1px] bg-[#DAE4E5] my-2"></div>
+
+          <!-- Appearance Section -->
+          <div class="py-2">
+            <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">Appearance</span>
+            
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">dark_mode</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">Theme</div>
+                  <div class="text-xs text-[#3F4849]">System default</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">contrast</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">High contrast black</div>
+                  <div class="text-xs text-[#3F4849]">Pure black background for OLED screens</div>
+                </div>
+              </div>
+              <div id="toggle-oled-black" class="m3-switch off" aria-label="High contrast black toggle">
+                <div class="m3-switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="h-[1px] bg-[#DAE4E5] my-2"></div>
+
+          <!-- Account Section -->
+          <div class="py-2">
+            <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">Account</span>
+            
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-[#3F4849] mt-0.5">account_circle</span>
+                <div>
+                  <div class="text-sm font-normal text-[#191C1D]">priya@example.com</div>
+                  <div class="text-xs text-[#3F4849]">Signed in · Employee Tier</div>
+                </div>
+              </div>
+            </div>
+
+            <div id="btn-sign-out" class="flex items-center py-3 px-1 cursor-pointer hover:bg-[#00696D]/5 rounded">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[#3F4849]">logout</span>
+                <span class="text-sm text-[#191C1D]">Sign out</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="h-[1px] bg-[#DAE4E5] my-2"></div>
+
+          <!-- About Section -->
+          <div class="py-2">
+            <span class="text-xs font-semibold text-[#00696D] tracking-wider uppercase px-1">About</span>
+            
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[#3F4849]">policy</span>
+                <span class="text-sm text-[#191C1D]">Privacy policy</span>
+              </div>
+              <span class="material-symbols-outlined text-[#6F7979] text-[18px]">open_in_new</span>
+            </div>
+
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[#3F4849]">description</span>
+                <span class="text-sm text-[#191C1D]">Open source licenses</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between py-3 px-1">
+              <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[#3F4849]">info</span>
+                <div>
+                  <div class="text-sm text-[#191C1D]">Version</div>
+                  <div class="text-xs font-mono text-[#3F4849]">1.0.0</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- Bottom Navigation Bar (80dp height, 8dp active indicator radius) -->
+      <nav id="bottom-navbar" class="h-20 bg-[#EEF5F4] border-t border-[#DAE4E5]/60 px-4 flex items-center justify-around shrink-0 select-none z-20">
+        <!-- Home -->
+        <button class="nav-btn flex flex-col items-center justify-center gap-1 w-16" data-tab="home">
+          <div class="nav-indicator h-8 w-16 bg-[#B2EBEC] rounded-[8px] flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#002021] fill-icon">home</span>
+          </div>
+          <span class="nav-label text-[12px] font-semibold text-[#002021]">Home</span>
+        </button>
+
+        <!-- Messages -->
+        <button class="nav-btn flex flex-col items-center justify-center gap-1 w-16" data-tab="messages">
+          <div class="nav-indicator h-8 w-16 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#3F4849]">chat</span>
+          </div>
+          <span class="nav-label text-[12px] font-medium text-[#3F4849]">Messages</span>
+        </button>
+
+        <!-- Rules -->
+        <button class="nav-btn flex flex-col items-center justify-center gap-1 w-16" data-tab="rules">
+          <div class="nav-indicator h-8 w-16 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#3F4849]">tune</span>
+          </div>
+          <span class="nav-label text-[12px] font-medium text-[#3F4849]">Rules</span>
+        </button>
+
+        <!-- Settings -->
+        <button class="nav-btn flex flex-col items-center justify-center gap-1 w-16" data-tab="settings">
+          <div class="nav-indicator h-8 w-16 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#3F4849]">settings</span>
+          </div>
+          <span class="nav-label text-[12px] font-medium text-[#3F4849]">Settings</span>
+        </button>
+      </nav>
+
+      <!-- Home bar indicator -->
+      <div class="h-3 bg-[#EEF5F4] flex items-center justify-center pb-2 shrink-0">
+        <div class="w-28 h-1 bg-[#191C1D]/30 rounded-full"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Demo Control Panel -->
+  <aside class="w-full lg:w-96 bg-slate-900 border border-slate-800 rounded-2xl p-6 text-slate-100 flex flex-col gap-5 shadow-2xl">
+    <div>
+      <div class="flex items-center gap-2 text-cyan-400 font-semibold text-base mb-1">
+        <span class="material-symbols-outlined text-[20px]">security</span>
+        <span>Obsidian Mobile Demo Deck</span>
+      </div>
+      <p class="text-xs text-slate-400">
+        Simulate real-time cybersecurity threat telemetry and device hardware events directly into the app.
+      </p>
+    </div>
+
+    <!-- Threat Scenario Generators -->
+    <div class="flex flex-col gap-2.5">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">1. Threat Interception Scenarios</span>
+
+      <button id="demo-phish-whatsapp" class="m3-btn text-left p-3 rounded-lg bg-red-950/40 border border-red-500/30 hover:bg-red-900/40 transition-colors flex items-start gap-3">
+        <span class="material-symbols-outlined text-red-400 mt-0.5">phishing</span>
+        <div>
+          <div class="text-xs font-semibold text-red-200">Simulate WhatsApp Phishing</div>
+          <div class="text-[11px] text-red-300/80 font-mono mt-0.5">Rahul: "Urgent KYC link secure-login-verify.co"</div>
+        </div>
+      </button>
+
+      <button id="demo-suspicious-sms" class="m3-btn text-left p-3 rounded-lg bg-amber-950/40 border border-amber-500/30 hover:bg-amber-900/40 transition-colors flex items-start gap-3">
+        <span class="material-symbols-outlined text-amber-400 mt-0.5">warning</span>
+        <div>
+          <div class="text-xs font-semibold text-amber-200">Simulate Suspicious SMS</div>
+          <div class="text-[11px] text-amber-300/80 font-mono mt-0.5">+91 98200 11234: "Check bit.ly/3xQa9"</div>
+        </div>
+      </button>
+
+      <button id="demo-safe-youtube" class="m3-btn text-left p-3 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-800 transition-colors flex items-start gap-3">
+        <span class="material-symbols-outlined text-emerald-400 mt-0.5">check_circle</span>
+        <div>
+          <div class="text-xs font-semibold text-slate-200">Simulate Safe Contact Message</div>
+          <div class="text-[11px] text-slate-400 font-mono mt-0.5">Mom: "Watch video youtube.com"</div>
+        </div>
+      </button>
+    </div>
+
+    <!-- Hardware & Zero-Trust Triggers -->
+    <div class="flex flex-col gap-2.5 pt-2 border-t border-slate-800">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">2. Zero-Trust Hardware Events</span>
+
+      <button id="demo-sim-swap" class="m3-btn text-left p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 hover:bg-rose-900/50 transition-colors flex items-start gap-3">
+        <span class="material-symbols-outlined text-rose-400 mt-0.5">sim_card_alert</span>
+        <div>
+          <div class="text-xs font-semibold text-rose-200">Trigger SIM Change Alert [P1]</div>
+          <div class="text-[11px] text-rose-300/80 mt-0.5">Simulate SIM removal / IMSI mismatch to lock session</div>
+        </div>
+      </button>
+
+      <button id="demo-lock-phone" class="m3-btn text-left p-3 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-800 transition-colors flex items-start gap-3">
+        <span class="material-symbols-outlined text-cyan-400 mt-0.5">fingerprint</span>
+        <div>
+          <div class="text-xs font-semibold text-slate-200">Lock App with Biometrics [P0]</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Test Screen 01 Biometric Prompt & PIN lock</div>
+        </div>
+      </button>
+    </div>
+
+    <!-- Active Crowd-Immunity Stats -->
+    <div class="p-3.5 bg-slate-800/40 border border-slate-700/60 rounded-xl text-xs space-y-1.5">
+      <div class="flex justify-between text-slate-300">
+        <span>Blocked Rules:</span>
+        <span class="font-mono text-cyan-300" id="stat-blocked-count">4</span>
+      </div>
+      <div class="flex justify-between text-slate-300">
+        <span>Trusted Whitelist:</span>
+        <span class="font-mono text-cyan-300" id="stat-trusted-count">4</span>
+      </div>
+      <div class="flex justify-between text-slate-300">
+        <span>Fleet Daemon Sync:</span>
+        <span class="text-emerald-400 font-medium flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Connected (&lt;50ms)
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Add Rule Modal Dialog -->
+  <div id="add-rule-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-[#FAFDFD] rounded-[12px] p-6 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-[#DAE4E5]">
+      <h3 class="text-lg font-medium text-[#191C1D]">Add Threat Rule</h3>
+      
+      <div>
+        <label class="text-xs font-semibold text-[#3F4849] uppercase">Indicator Type</label>
+        <div class="flex gap-4 mt-1.5">
+          <label class="flex items-center gap-1 text-sm text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-rule-type" value="URL" checked class="accent-[#00696D]"> URL
+          </label>
+          <label class="flex items-center gap-1 text-sm text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-rule-type" value="PHONE" class="accent-[#00696D]"> Phone
+          </label>
+          <label class="flex items-center gap-1 text-sm text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-rule-type" value="EMAIL" class="accent-[#00696D]"> Email
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-[#3F4849] uppercase">Value</label>
+        <input type="text" id="modal-rule-value" placeholder="e.g. evil-domain.com" class="w-full mt-1 px-3 py-2 text-sm font-mono border border-[#6F7979] rounded-[4px] bg-[#E0E3E3] text-[#191C1D] outline-none">
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-[#3F4849] uppercase">List Type</label>
+        <div class="flex gap-4 mt-1.5">
+          <label class="flex items-center gap-1 text-sm text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-list-type" value="BLOCKED" checked class="accent-[#00696D]"> Blocked
+          </label>
+          <label class="flex items-center gap-1 text-sm text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-list-type" value="TRUSTED" class="accent-[#00696D]"> Trusted
+          </label>
+        </div>
+      </div>
+
+      <div id="modal-ttl-section" class="hidden">
+        <label class="text-xs font-semibold text-[#3F4849] uppercase">Duration (TTL Bypass)</label>
+        <div class="flex gap-3 mt-1.5">
+          <label class="flex items-center gap-1 text-xs text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-ttl" value="15" checked class="accent-[#00696D]"> 15 min
+          </label>
+          <label class="flex items-center gap-1 text-xs text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-ttl" value="60" class="accent-[#00696D]"> 1 hr
+          </label>
+          <label class="flex items-center gap-1 text-xs text-[#191C1D] cursor-pointer">
+            <input type="radio" name="modal-ttl" value="PERM" class="accent-[#00696D]"> Always
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="modal-btn-cancel" class="m3-btn px-4 py-2 text-sm text-[#3F4849] hover:bg-[#00696D]/10">Cancel</button>
+        <button id="modal-btn-save" class="m3-btn px-4 py-2 text-sm bg-[#00696D] text-white font-medium hover:bg-[#00575a]">Add Rule</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
