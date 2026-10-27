@@ -40,6 +40,11 @@ public class GmailOAuthController {
 
     @GetMapping("/oauth2/authorization/google")
     public ResponseEntity<Void> connect(Account account, HttpSession session) {
+        if (!gmail.configured()) {
+            // Google would only answer "Access blocked: missing client_id".
+            log.warn("Connect Gmail needs GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET (README, \"Connect Gmail\")");
+            return redirect("/settings?gmail=not-configured");
+        }
         String state = Tokens.generate("");
         session.setAttribute(STATE, state);
         return redirect(GmailClient.authorizationUrl(gmail, state, redirectUri));

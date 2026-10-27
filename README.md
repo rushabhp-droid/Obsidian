@@ -338,12 +338,41 @@ To add a passkey, open **Settings** → **Add a passkey** in Chrome on `http://l
 `/etc/hosts` doesn't cover subdomains, and browsers with secure DNS (DNS over HTTPS) ignore it. Test with `curl`, or turn secure DNS off in the demo browser.
 
 ### 6. Connect Gmail (optional)
-1. Create a Google Cloud OAuth client of type "Web application" with the Gmail API enabled.
-2. Set its redirect URI to `${PUBLIC_BASE_URL}/login/oauth2/code/google`, for example `http://localhost:3000/login/oauth2/code/google`.
-3. Keep the consent screen in Testing mode and add every demo account as a test user.
-4. Put `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` and `APP_ENC_KEY` in `.env`, restart Spring, then use **Settings** → **Connect Gmail**.
+Gmail needs your own Google OAuth client. Without one, the backend has no client ID, and Google answers "Access blocked". In the [Google Cloud console](https://console.cloud.google.com/):
 
-Unread INBOX and SPAM messages are scanned every 45 s and show up under **Email Security**.
+1. **Project and API.** Create (or pick) a project. Under **APIs & Services → Library**, enable the **Gmail API**.
+2. **Consent screen.** Open **Google Auth Platform** (formerly "OAuth consent screen").
+   - Branding: app name `Obsidian`, plus a support email.
+   - Audience: user type **External**, publishing status **Testing**.
+   - Under **Test users**, add every Gmail address you will connect, and the demo presenter's.
+   - Data access: add the scopes `…/auth/gmail.readonly` and `…/auth/gmail.modify`.
+
+   These are restricted scopes, so the app stays in Testing. Only listed test users can connect.
+3. **OAuth client.** Under **Clients** (or **Credentials → Create credentials → OAuth client ID**), create a client.
+   - Application type: **Web application**.
+   - Authorized redirect URIs: `http://localhost:3000/login/oauth2/code/google`. For the tunnel, also add `https://obsidian.<your-domain>/login/oauth2/code/google`.
+   - The URI must match `${PUBLIC_BASE_URL}/login/oauth2/code/google` exactly: scheme, host, port 3000 and path.
+4. **`.env`.** Copy the client ID and secret:
+   ```sh
+   cp -n .env.example .env
+   # then set, in .env:
+   GMAIL_CLIENT_ID=1234567890-abc….apps.googleusercontent.com
+   GMAIL_CLIENT_SECRET=GOCSPX-…
+   APP_ENC_KEY=$(openssl rand -base64 32)   # paste the generated value; it encrypts the stored refresh token
+   PUBLIC_BASE_URL=http://localhost:3000     # or https://obsidian.<your-domain>
+   ```
+5. **Restart the backend.** Settings are read at startup. Stop `scripts/build.sh run` with Ctrl+C and start it again.
+   - Use `--prod` for a demo you prepare in advance. Dev mode keeps data in memory, so the connection is gone after a restart.
+6. **Connect.** As the signed-in user, go to **Settings → Connect Gmail** and pick a test-user account. Google shows "Google hasn't verified this app"; click **Continue**. That screen is expected in Testing mode.
+7. **Check it.** You're sent back to Settings with Gmail **Connected**. Unread INBOX and SPAM messages are scanned every 45 s and appear under **Email Security**.
+
+| Google says | Cause | Fix |
+| --- | --- | --- |
+| Access blocked: "Missing required parameter: client_id" | `GMAIL_CLIENT_ID` isn't set. Settings now says "Gmail isn't set up on this server" instead | Steps 3–5 |
+| Access blocked: "… has not completed the Google verification process" (403 `access_denied`) | The Google account isn't a test user | Add it under **Test users** (step 2) |
+| Error 400: `redirect_uri_mismatch` | The redirect URI in the client doesn't match `PUBLIC_BASE_URL` | Fix the URI in step 3, or `PUBLIC_BASE_URL` in `.env` |
+| Error 401: `invalid_client` | Wrong or mistyped client ID or secret | Copy both again from the client page |
+| Back on Settings with "Gmail was not connected" | Consent was cancelled, or Google returned no refresh token | Try again; remove Obsidian under myaccount.google.com → Security → Third-party connections first if it keeps failing |
 
 ### 7. Public demo through a named tunnel
 ```sh

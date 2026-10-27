@@ -65,6 +65,12 @@ export function SettingsView() {
         )
       ) : null}
 
+      {gmailResult === "not-configured" ? (
+        <ContextNotice tone="warning" title="Gmail isn't set up on this server">
+          Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in .env from a Google OAuth client (type Web application), then
+          restart the backend. The README&apos;s &quot;Connect Gmail&quot; section lists every step.
+        </ContextNotice>
+      ) : null}
       {gmailResult === "error" ? (
         <ContextNotice tone="critical" title="Gmail was not connected">
           Google didn&apos;t grant access, or the sign-in expired. Try Connect Gmail again.
