@@ -237,6 +237,8 @@ Daemon → server: `{"type":"HEARTBEAT"}` every 10 s. Each one updates `endpoint
 ## WebSocket `/ws/dashboard` (web)
 
 Authenticated by the session cookie; the `Origin` must be `PUBLIC_BASE_URL` (or `obsidian.web.allowed-origins`).
+The server invalidates the web session 25 seconds after its last dashboard connection closes. This grace period
+lets a page reload or WebSocket reconnect preserve the session.
 Server → browser frames (the `DashboardEvent` union in `web-dashboard/src/lib/types.ts`):
 
 ```json

@@ -18,6 +18,11 @@ Bypass and agent registration change that data in the browser only. Set it to `l
 `/login/webauthn`, `/oauth2` and `/login/oauth2` to Spring, and `middleware.ts` sends visitors without a
 `__Host-session` cookie to `/login`.
 
+The dashboard signs out after its last tab closes. A same-tab reload keeps the session; opening the dashboard
+in a new tab after the last tab closed signs out and returns to `/login`. In live mode, Spring also invalidates
+the Redis session 25 seconds after the final `/ws/dashboard` connection closes, allowing a brief reconnect. In
+mock mode, browser storage simulates the tab behavior; authentication itself is not sent to Spring.
+
 ## Screens
 
 | Route | Figma frame | Notes |

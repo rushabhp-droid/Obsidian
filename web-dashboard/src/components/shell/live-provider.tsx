@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { registerDashboardTab } from "@/lib/dashboard-tab-session";
 import { subscribeDashboard } from "@/lib/ws";
 import { useResource } from "@/hooks/use-resource";
 import type { DashboardEvent, EndpointAgent, SessionInfo } from "@/lib/types";
@@ -29,13 +30,26 @@ const LiveContext = createContext<LiveState | null>(null);
 /** Session, agent heartbeats and the dashboard socket, shared by the shell and pages. */
 export function LiveProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const session = useResource(api.session);
-  const agents = useResource(api.listAgents);
+  const [tabReady, setTabReady] = useState(false);
+  const session = useResource(api.session, tabReady);
+  const agents = useResource(api.listAgents, tabReady);
   const [events, setEvents] = useState<LiveState["events"]>([]);
   const [socketConnected, setSocketConnected] = useState(false);
   const [ruleVersion, setRuleVersion] = useState(0);
   const [codeVersion, setCodeVersion] = useState(0);
   const { mutate: mutateAgents } = agents;
+
+  useEffect(() => {
+    const tab = registerDashboardTab();
+    if (tab.needsLogin) {
+      void api.logout()
+        .catch(() => undefined)
+        .finally(() => router.replace("/login?reason=expired"));
+      return tab.dispose;
+    }
+    setTabReady(true);
+    return tab.dispose;
+  }, [router]);
 
   useEffect(() => {
     if (session.error instanceof ApiError && session.error.status === 401) {
@@ -44,8 +58,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   }, [session.error, router]);
 
   useEffect(
-    () =>
-      subscribeDashboard((event) => {
+    () => {
+      if (!tabReady) return;
+      return subscribeDashboard((event) => {
         if (event.type === "HEARTBEAT") {
           mutateAgents((list = []) =>
             list.map((a) => (a.id === event.agentId ? { ...a, lastHeartbeatAt: event.at } : a)),
@@ -56,8 +71,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           setEvents((list) => [event, ...list].slice(0, 25));
           if (event.type !== "SCAN") setRuleVersion((v) => v + 1);
         }
-      }, setSocketConnected),
-    [mutateAgents],
+      }, setSocketConnected);
+    },
+    [mutateAgents, tabReady],
   );
 
   const value = useMemo<LiveState>(
@@ -75,7 +91,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     [session.data, session.error, socketConnected, events, ruleVersion, codeVersion, agents.data, agents.error, agents.reload],
   );
 
-  return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
+  return <LiveContext.Provider value={value}>{tabReady ? children : null}</LiveContext.Provider>;
 }
 
 export function useLive() {

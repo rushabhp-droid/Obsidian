@@ -14,11 +14,12 @@ interface ResourceState<T> {
  * A failed reload keeps the previous data so the page never swaps real results
  * for an empty or "success" state.
  */
-export function useResource<T>(load: () => Promise<T>) {
+export function useResource<T>(load: () => Promise<T>, enabled = true) {
   const [state, setState] = useState<ResourceState<T>>({ data: undefined, error: undefined, loading: true });
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     setState((s) => ({ ...s, loading: true }));
     load()
@@ -27,7 +28,7 @@ export function useResource<T>(load: () => Promise<T>) {
     return () => {
       cancelled = true;
     };
-  }, [load, version]);
+  }, [load, version, enabled]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   const mutate = useCallback((update: (data: T | undefined) => T) => {

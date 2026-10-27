@@ -16,6 +16,7 @@ import type {
   SessionInfo,
   ThreatRule,
 } from "./types";
+import { clearMockSignedOut, markMockSignedOut } from "./dashboard-tab-session";
 
 const ORG_ID = "6f1c2a4e-0b7d-4c55-9a51-2d8e5b3c9f10";
 const USER_ID = "b2e4d6f8-1a3c-4e5f-8a9b-0c1d2e3f4a5b";
@@ -310,8 +311,14 @@ const delay = <T,>(value: T, ms = 250) =>
 
 export const mockApi = {
   session: () => delay(session),
-  login: () => delay(undefined, 400),
-  logout: () => delay(undefined),
+  login: () => {
+    clearMockSignedOut();
+    return delay(undefined, 400);
+  },
+  logout: () => {
+    markMockSignedOut();
+    return delay(undefined);
+  },
   listRules: () => delay(rules),
   listScans: () => delay(scans),
   listAgents: () => delay(agents),

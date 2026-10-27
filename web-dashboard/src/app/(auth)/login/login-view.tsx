@@ -9,6 +9,7 @@ import { ObsidianIdentity, ObsidianMark } from "@/components/obsidian/identity";
 import { ContextNotice } from "@/components/obsidian/panel";
 import { Turnstile, TURNSTILE_SITE_KEY } from "@/components/obsidian/turnstile";
 import { api, API_MODE, ApiError } from "@/lib/api";
+import { markDashboardLogin } from "@/lib/dashboard-tab-session";
 import { signInWithPasskey } from "@/lib/webauthn";
 import { usePasskeySupport } from "@/hooks/use-passkey-support";
 
@@ -57,6 +58,7 @@ export function LoginView() {
     try {
       if (method === "passkey") await signInWithPasskey(turnstileToken);
       else await api.login(email.trim().toLowerCase(), password, turnstileToken);
+      markDashboardLogin();
       router.replace("/dashboard");
     } catch (error) {
       setFailure(describeFailure(error, method));

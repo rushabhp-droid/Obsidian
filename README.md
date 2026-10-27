@@ -13,13 +13,13 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | Component | State |
 | --- | --- |
 | Repo scaffolding | Done: `db/init.sql`, `docker-compose.yml`, `.env.example`, `docs/protocol.md` (the shared contract), `cloudflared/config.yml`, `scripts/` (seed, VirusTotal pre-warm, demo reset). |
-| `backend-spring/` auth | Done: Argon2id password login, passkeys (Spring WebAuthn, JDBC tables), `__Host-session` cookie in Redis, CSRF cookie, mobile bearer tokens, Turnstile. |
+| `backend-spring/` auth | Done: Argon2id password login, passkeys (Spring WebAuthn, JDBC tables), `__Host-session` cookie in Redis, CSRF cookie, mobile bearer tokens, Turnstile. The web session ends after the last dashboard tab closes. |
 | `backend-spring/` rules | Done: `RulePrecedence`; `RuleService` saves, audits and publishes every change; `GET /rules`, `POST /rules/report`, `POST /rules/bypass`. |
 | `backend-spring/` scanner | Done: `POST /scan/unified`, `GET /scans`, VirusTotal v3 (Redis cache, 4/min limiter, submit + poll, `PENDING`), topmost `mx.google.com` SPF/DKIM/DMARC, MIME links and attachment SHA-256. |
 | `backend-spring/` Gmail | Done: OAuth connect (encrypted refresh token), polling worker, `GET /emails`, `/integrations/gmail`. Not yet tried against a real Google account. |
 | `backend-spring/` WebSockets + agents | Done: `/ws/firewall` (bearer handshake, SYNC, BLOCK/BYPASS, HEARTBEAT), `/ws/dashboard`, Redis fan-out, `POST/GET /agents`. |
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
-| `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). Field names are checked by `ApiContractTest`. |
+| `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). A new tab requires sign-in after the last dashboard tab closes; reloading the same tab keeps the session. Field names are checked by `ApiContractTest`. |
 | Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
 | `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
 
@@ -119,6 +119,7 @@ flowchart LR
 ### Security of the platform itself
 - Passkeys (WebAuthn/FIDO2) through Spring Security, with an Argon2id password fallback and optional TOTP.
 - A host-only `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Lax`) backed by Redis.
+- Closing the last dashboard tab ends the web session. The dashboard preserves the session across same-tab reloads; Spring invalidates it after a 25-second reconnect grace period.
 - Cloudflare Turnstile on registration and login. Everything is served through a named Cloudflare Tunnel.
 - The daemon validates every IP and domain before making any system call, and runs binaries directly, never through a shell.
 - Each agent has its own bearer token, and the server stores only its hash.
@@ -162,6 +163,8 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 ## Getting Started
 
 **Quick start:** `scripts/build.sh run` starts the whole stack in one terminal, with no Docker: API, dashboard and a dry-run firewall daemon. Open http://localhost:3000 and sign in as `avery.lin@aster.example` / `obsidian-demo-2026`. Ctrl+C stops everything. `scripts/build.sh` tests and builds it all. See [Run everything with one command](#run-everything-with-one-command) and [Build and test everything](#8-build-and-test-everything).
+
+The dashboard signs out after its last tab closes. In live mode, Spring invalidates the session 25 seconds after the final dashboard WebSocket disconnects; opening the dashboard in a new tab after the close signs out immediately. A reload in the same tab preserves the session. Mock mode simulates this behavior in browser storage; it does not authenticate against Spring.
 
 ### Run everything with one command
 ```sh

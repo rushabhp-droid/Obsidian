@@ -21,15 +21,22 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class DashboardWebSocketHandler extends TextWebSocketHandler {
 
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+    private final DashboardSessionPresence presence;
+
+    public DashboardWebSocketHandler(DashboardSessionPresence presence) {
+        this.presence = presence;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         sessions.put(session.getId(), new ConcurrentWebSocketSessionDecorator(session, 5_000, 512 * 1024));
+        String sessionId = sessionId(session);
+        if (sessionId != null) presence.connected(sessionId);
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
+        removeConnection(session);
     }
 
     void deliver(EventEnvelope envelope) {
@@ -42,7 +49,12 @@ public class DashboardWebSocketHandler extends TextWebSocketHandler {
                 try {
                     session.sendMessage(message);
                 } catch (IOException | IllegalStateException e) {
-                    sessions.remove(session.getId());
+                    try {
+                        session.close(CloseStatus.SERVER_ERROR);
+                    } catch (IOException ignored) {
+                        // Remove the failed connection below even if the transport is already gone.
+                    }
+                    removeConnection(session);
                 }
             }
         }
@@ -56,5 +68,16 @@ public class DashboardWebSocketHandler extends TextWebSocketHandler {
             return false;
         }
         return userId == null || userId.equals(account.userId()) || account.isAdmin();
+    }
+
+    private static String sessionId(WebSocketSession session) {
+        Object sessionId = session.getAttributes().get(DashboardHandshakeInterceptor.SESSION_ID);
+        return sessionId instanceof String value ? value : null;
+    }
+
+    private void removeConnection(WebSocketSession session) {
+        if (sessions.remove(session.getId()) == null) return;
+        String sessionId = sessionId(session);
+        if (sessionId != null) presence.disconnected(sessionId);
     }
 }

@@ -47,7 +47,7 @@ When a request touches a [P1] or [ROADMAP] item, name the tag before you impleme
 | `backend-spring/` | Java 21 bytecode (`options.release.set(21)`), Spring Boot 3.5.x, Spring Security 6.5 (built-in WebAuthn, webauthn4j), Spring Session Redis, Spring Data JPA (Hibernate `ddl-auto=validate`), virtual threads, Gradle 9 Kotlin DSL (`./gradlew` works), BouncyCastle `bcprov`/`bcpkix` jdk18on (Argon2 and PEM parsing). |
 | Backend tests | JUnit 5 on **embedded PostgreSQL 16** (zonky `embedded-postgres`) + **jedis-mock** (in-process Redis): no Docker. `MockRestServiceServer` for VirusTotal/Google/Turnstile, webauthn4j-test emulator for passkeys, a JDK `HttpServer` fake GitHub for Code Guard. **256 tests.** |
 | `daemon-rust/` | Rust 2021, `tokio` (current-thread), `tokio-tungstenite` 0.30 with rustls, `serde_json`. Linux only. **19 tests.** |
-| `web-dashboard/` | Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui. `NEXT_PUBLIC_API_MODE=mock` (in-browser mock store) or `live` (talks to Spring through rewrites). `NEXT_PUBLIC_*` is baked in at build time. |
+| `web-dashboard/` | Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui. `NEXT_PUBLIC_API_MODE=mock` (in-browser mock store) or `live` (talks to Spring through rewrites). Last-tab sign-out is tracked in browser storage; mock mode simulates it locally. `NEXT_PUBLIC_*` is baked in at build time. |
 | `mobile-android/` | Kotlin 2.0.21, AGP 8.7.2, Jetpack Compose (BOM 2024.10.01), Retrofit + OkHttp + kotlinx.serialization, minSdk 26, target/compile 35. **No Gradle wrapper committed.** Built by a teammate, see §7. |
 | Data | PostgreSQL 16 (`db/init.sql`, `pgcrypto` for `pgp_sym_encrypt`), Redis 7. `docker-compose.yml` runs both. |
 | Edge | One hostname behind a **named** Cloudflare tunnel (`cloudflared/config.yml`), path-based routing. Never a `trycloudflare.com` quick tunnel (breaks passkey RP ID and Turnstile). |
@@ -177,6 +177,10 @@ with the Next.js `/login`.
   built-in `/webauthn/*` and `/login/webauthn`, JDBC `user_entities`/`user_credentials`). Session in Redis,
   cookie `__Host-session` (`Secure; HttpOnly; Path=/; SameSite=Lax`, no `Domain`). SPA CSRF: `XSRF-TOKEN`
   cookie echoed as `X-XSRF-TOKEN`.
+- The dashboard marks each tab in browser storage. Closing the last tab causes a fresh tab to call logout;
+  reloading in the same tab retains the session. In live mode, `DashboardSessionPresence` also deletes the
+  Redis session 25 seconds after the last `/ws/dashboard` connection closes, to allow a reload/reconnect.
+  Mock mode uses the same browser markers with a simulated session; it does not authenticate against Spring.
 - **Mobile:** `POST /api/v1/auth/login` with `"client": "MOBILE"` returns `{token: "obm_…", expiresAt}`
   (30 days). Only the SHA-256 is stored (Redis `mobile:token:<sha256>`). No CSRF with a bearer token.
 - **Daemon:** `POST /api/v1/agents` (admin) returns an `obs_…` token once; `endpoint_agents.token_hash` keeps
@@ -221,7 +225,8 @@ Redis `channel:firewall:events` carries an envelope `{kind: RULE|SCAN|HEARTBEAT|
 - `/ws/firewall` (daemons): full `SYNC` on every connect, then `BLOCK`/`BYPASS` for org-level IP/DOMAIN
   changes. Daemon sends `HEARTBEAT` every 10 s.
 - `/ws/dashboard` (web, session cookie): rule/scan/heartbeat events for the viewer's scope;
-  `CODE_FINDING` only to admins.
+  `CODE_FINDING` only to admins. The server tracks connections per session and expires the session after
+  the last one closes and the 25-second reconnect grace period ends.
 
 ### Gmail
 Manual OAuth (not Spring's oauth2Login): `GET /oauth2/authorization/google` → Google → `/login/oauth2/code/google`.
