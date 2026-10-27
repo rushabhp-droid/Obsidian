@@ -1,1 +1,217 @@
 # Obsidian
+
+**One threat-rule engine for email, messaging and the network, for consumers and organizations.**
+
+When someone reports a phishing link from a phone, Obsidian blocks it on every machine in the organization in under a second.
+
+> **Status:** 24-hour hackathon project, currently in planning. The full implementation plan is in [`TODO.md`](TODO.md). The components listed below don't exist in the repo yet.
+
+---
+
+## Problem Statement
+
+Phishing and scam campaigns don't stick to one channel. The same malicious domain arrives by email, then by SMS, then in a WhatsApp message, and eventually a laptop on the corporate network tries to connect to it. Defenses are still built one channel at a time:
+
+- **The channels don't share what they learn.** An email filter that flags a domain doesn't tell the phone's messaging app, and neither of them tells the network firewall. Whoever spots a threat first can't protect anyone else.
+- **Users who spot threats have nowhere to send them.** When a phishing email gets past the filter, the user who notices it usually has no one-click way to report it, and reporting it doesn't protect their colleagues.
+- **Consumers are mostly unprotected outside email.** Smishing and WhatsApp scams reach people who have no security team. They are especially effective from unknown numbers, or from familiar contacts whose accounts were compromised.
+- **Bypassing a block is all or nothing.** False positives are common. Blocks that are rigid get disabled wholesale, and overrides that never expire stay open forever.
+- **Authentication is still often just a password.** The dashboard that controls an organization's firewall should not be protected by a reusable password alone.
+
+**Problem:** Build a platform that treats email, SMS/WhatsApp and network traffic as **one surface with one rule set**. A threat seen once, by any user on any channel, should be blocked everywhere in real time. The platform should stay usable for non-technical consumers, give security teams central control with audit trails, and resist account takeover.
+
+### Who it's for
+
+| | Consumers (B2C) | Organizations (B2B) |
+| --- | --- | --- |
+| **Who** | Everyday people with an Android phone and a Gmail account | Companies running a small SOC or IT team |
+| **Pain** | Scam texts, WhatsApp phishing, spam they can't judge | Per-channel tools, reports that don't spread, unaudited overrides |
+| **Need** | Zero-jargon warnings, 1-tap report/trust | One report blocks for everyone, time-limited bypass, OS-level enforcement |
+
+### What success looks like
+
+1. A link reported from a phone is enforced at the OS firewall of an enrolled laptop in **under a second**.
+2. Legitimate, cryptographically verified email passes through **untouched**.
+3. An unverified verdict is never shown as "safe". Unknown means `PENDING`.
+4. Every rule change is **audited**, and enterprise bypasses **expire** automatically.
+5. Sign-in uses **passkeys** (FIDO2). Passwords are only a fallback, hashed with Argon2id.
+
+---
+
+## How It Works
+
+```mermaid
+flowchart LR
+    subgraph Ingress
+        G[Gmail polling]
+        M[Android: SMS / WhatsApp]
+        W[Web: Report / Bypass]
+    end
+
+    G --> S
+    M --> S
+    W --> R
+
+    S["/api/v1/scan/unified"] --> P[(PostgreSQL<br/>threat_rules)]
+    P -->|no rule| C[(Redis<br/>VT cache)]
+    C -->|miss| VT[VirusTotal v3]
+
+    R[RuleService] --> P
+    R --> A[(audit_logs)]
+    R --> PS{{Redis Pub/Sub}}
+
+    PS --> D[Rust daemon<br/>iptables + /etc/hosts]
+    PS --> UI[SOC dashboard<br/>live feed]
+```
+
+1. **Ingest:** messages arrive from Gmail (OAuth polling), Android notifications (SMS and WhatsApp), or the web dashboard.
+2. **Decide:** every indicator (URL, domain, IP, sender, file hash) goes through one scan endpoint. The lookup order is org and user rules in PostgreSQL first, then the Redis-cached VirusTotal verdict, then a live VirusTotal lookup.
+3. **Act:** reports and bypasses go through a single `RuleService`. It writes the rule, records an audit entry, and publishes the change.
+4. **Enforce:** connected Rust daemons apply the change to the OS firewall and DNS sinkhole immediately, and SOC dashboards update live.
+
+---
+
+## Features
+
+### Shared across tiers
+- **Unified rule engine.** One blacklist/whitelist covers email senders, phone numbers, URLs, domains, IPs and file hashes, with a fixed precedence order (admin policy → user bypass → user block → org block → global → VirusTotal).
+- **Email triage.** "Verified official" requires SPF, DKIM and DMARC to pass **and** the sender domain to be on the allowlist. Links and attachments are scanned through VirusTotal.
+- **Report and Bypass everywhere.** Both are one click, on web and mobile.
+
+### Consumer
+- **Android app** with a biometric lock (fingerprint, PIN fallback).
+- **Real-time SMS and WhatsApp scanning** from notifications. For **saved contacts only links are sent**, and message text never leaves the phone.
+- **Personal web portal** for managing your own whitelist and blacklist.
+
+### Enterprise
+- **Crowd immunity.** One employee's report blocks the indicator for the whole organization.
+- **Rust endpoint daemon (Linux)** that enforces blocks with `iptables` and an `/etc/hosts` sinkhole. It resyncs the full rule set on every reconnect.
+- **SOC dashboard** with a live threat feed, agent heartbeat status, and a blacklist/whitelist editor.
+- **Time-bound bypasses** with an audit log *(stretch goal)*.
+
+### Security of the platform itself
+- Passkeys (WebAuthn/FIDO2) through Spring Security, with an Argon2id password fallback and optional TOTP.
+- A host-only `__Host-session` cookie (`Secure`, `HttpOnly`, `SameSite=Lax`) backed by Redis.
+- Cloudflare Turnstile on registration and login. Everything is served through a named Cloudflare Tunnel.
+- The daemon validates every IP and domain before making any system call, and runs binaries directly, never through a shell.
+- Each agent has its own bearer token, and the server stores only its hash.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Control plane / API | Java 21, Spring Boot 3.5+ (virtual threads), Spring Security WebAuthn |
+| Endpoint agent | Rust 2021, `tokio`, `tokio-tungstenite`, Linux |
+| Web app | Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui |
+| Mobile | Kotlin, Jetpack Compose, `BiometricPrompt`, `NotificationListenerService` |
+| Data | PostgreSQL 16, Redis 7 (sessions, VirusTotal cache, pub/sub) |
+| Edge | Cloudflare named Tunnel, Cloudflare Turnstile |
+| Threat intel | VirusTotal API v3 |
+
+---
+
+## Repository Layout (planned)
+
+```text
+obsidian/
+├── backend-spring/     # Spring Boot control plane: auth, rules, scanner, Gmail, WebSockets
+├── daemon-rust/        # Linux firewall agent (iptables + /etc/hosts sinkhole)
+├── web-dashboard/      # Next.js consumer portal + SOC dashboard
+├── mobile-android/     # Kotlin Android app
+├── db/init.sql         # PostgreSQL schema
+├── docs/protocol.md    # WebSocket + scan API contract
+├── cloudflared/        # Named tunnel config
+├── scripts/            # Seed data, VirusTotal cache pre-warm, demo reset
+└── docker-compose.yml  # PostgreSQL + Redis
+```
+
+The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-structure).
+
+---
+
+## Getting Started
+
+> These are the planned steps. They will be updated once the components land.
+
+### Prerequisites
+- Docker and Docker Compose
+- JDK 21, Node.js 20+, a Rust stable toolchain, and Android Studio
+- A Linux machine for the daemon (it needs root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`)
+- A VirusTotal API key, a Google Cloud OAuth client (Gmail API), and Cloudflare Turnstile keys
+- *Optional:* a domain in Cloudflare for a named tunnel. Without one, use the `localhost` fallback.
+
+### Configure
+```sh
+cp .env.example .env
+# Fill in VT_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, APP_ENC_KEY,
+# TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY, RP_ID
+```
+
+### Run
+```sh
+docker compose up -d                                   # PostgreSQL + Redis
+
+cd backend-spring && ./gradlew bootRun                 # API on :8080
+cd web-dashboard  && npm install && npm run dev        # Web on :3000
+cd daemon-rust    && cargo build --release \
+                  && sudo ./target/release/daemon-rust # Firewall agent
+cd mobile-android && ./gradlew installDebug            # Android app
+```
+
+### Routing
+The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/webauthn`, `/oauth2` and `/login/oauth2` go to Spring (`:8080`), and everything else goes to Next.js (`:3000`). This is set up in `cloudflared/config.yml`, or in `next.config.ts` rewrites in localhost mode.
+
+> Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
+
+---
+
+## API at a Glance
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/auth/register` | Create account (Turnstile-verified) |
+| `POST /api/v1/auth/login` | Password (+ TOTP) login; returns a cookie on web, a bearer token on mobile |
+| `/webauthn/*`, `/login/webauthn` | Passkey registration and login (Spring Security) |
+| `POST /api/v1/scan/unified` | Single scan endpoint for all channels |
+| `GET /api/v1/rules` | List active blacklist/whitelist rules |
+| `POST /api/v1/rules/report` | Blacklist an indicator and broadcast it to daemons |
+| `POST /api/v1/rules/bypass` | Whitelist an indicator (optional TTL) and lift the block |
+| `POST /api/v1/agents` | Register a daemon; its token is shown once |
+| `WS /ws/firewall` | Daemon channel: `SYNC`, `BLOCK`, `BYPASS`, `HEARTBEAT`, `ACK` |
+| `WS /ws/dashboard` | Live feed for the SOC dashboard |
+
+The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
+
+---
+
+## Known Limitations
+
+- **The daemon is Linux only** for now.
+- **`/etc/hosts` doesn't cover subdomains**, and browsers using DNS-over-HTTPS ignore it. Known-bad IPs are still dropped by `iptables`.
+- **VirusTotal's free tier** allows 4 requests/min and 500/day. Verdicts are cached for 24 hours, crowd reports are checked first, and anything unresolved is shown as `PENDING`.
+- **SIM change detection** detects a different SIM in *this* device. It doesn't by itself stop a carrier-side SIM swap.
+- **Mobile scanning is links only.** Notifications don't include attachments.
+
+---
+
+## Roadmap
+
+- Windows (`netsh`) and macOS (`pfctl`) daemons
+- Android DNS/VPN filtering mode
+- Device posture checks (SIM, biometrics and heartbeat gating session access)
+- Fleet management
+- Organization-wide Google Workspace scanning
+- Cloudflare WAF rules
+
+---
+
+## Team
+
+| Role | Area |
+| --- | --- |
+| Dev 1 | Backend: auth, database, Redis, WebSockets, Gmail |
+| Dev 2 | Threat intel: scanner, VirusTotal, email analysis, Rust daemon |
+| Dev 3 | Mobile: Android app, biometrics, message interception |
+| Dev 4 | Frontend: login, SOC dashboard, rule editor |
