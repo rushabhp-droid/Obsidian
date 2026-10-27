@@ -37,8 +37,9 @@ policy and the compact views) are not in `TODO.md`.
 
 ## API contract
 
-Types live in `src/lib/types.ts` and follow `TODO.md` §4 and §6; when `docs/protocol.md` exists, it wins.
-Besides the §6 endpoints, the pages call these reads, which §6 doesn't list yet:
+Types live in `src/lib/types.ts` and follow [`docs/protocol.md`](../docs/protocol.md), which wins; change both
+together. `backend-spring`'s `ApiContractTest` reads `types.ts` and fails when a response drifts from it.
+Besides the TODO.md §6 endpoints, the pages use these reads, all implemented in Spring:
 
 | Endpoint | Used by |
 | --- | --- |
@@ -49,15 +50,17 @@ Besides the §6 endpoints, the pages call these reads, which §6 doesn't list ye
 | `GET /api/v1/emails` | Email security |
 | `GET /api/v1/integrations/gmail`, `POST …/gmail/disconnect` | Email security, Settings |
 
-Other assumptions for the backend:
-
-- `POST /api/v1/auth/login` body is `{ email, password, turnstileToken }`. Passkey requests send the Turnstile
-  token in a `CF-Turnstile-Response` header.
-- Mutations send `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie (Spring's `CookieCsrfTokenRepository`) if present.
-- `/ws/dashboard` frames are the `DashboardEvent` union in `types.ts`. Rule events reuse the `/ws/firewall`
-  fields (`type`, `ruleId`, `indicator_type`, `value`) plus `at`.
+- `POST /api/v1/auth/login` body is `{ email, password, turnstileToken }`; `400` means the Turnstile check failed.
+  Passkey login sends the Turnstile token in a `CF-Turnstile-Response` header.
+- Mutations send `X-XSRF-TOKEN` from the `XSRF-TOKEN` cookie, which Spring sets on every response.
+- Errors are problem details; `api.ts` shows their `detail`.
+- `/ws/dashboard` frames are the `DashboardEvent` union. The Next.js rewrite proxies the WebSocket upgrade too,
+  so `NEXT_PUBLIC_WS_URL` isn't needed on localhost.
 - Bypass sends `ttlMinutes: 15` for `EMPLOYEE` sessions, because enterprise user bypasses must expire. Picking
   the TTL is the [P1] TTL feature.
+
+Live mode against the no-Docker backend: `cd backend-spring && gradle bootTestRun`, then
+`NEXT_PUBLIC_API_MODE=live npm run dev`, and sign in as `avery.lin@aster.example` / `obsidian-demo-2026`.
 
 ## Design system
 

@@ -1,5 +1,5 @@
-// Shapes follow TODO.md §4 (schema) and §6 (API). docs/protocol.md doesn't exist
-// yet; once it does, it wins over this file and both must change together.
+// Shapes follow docs/protocol.md, which wins over this file; change both together.
+// backend-spring's ApiContractTest reads this file and fails if a response drifts.
 
 export type IndicatorType = "EMAIL" | "PHONE" | "URL" | "DOMAIN" | "IP" | "FILE_HASH";
 export type ListType = "BLACKLIST" | "WHITELIST";

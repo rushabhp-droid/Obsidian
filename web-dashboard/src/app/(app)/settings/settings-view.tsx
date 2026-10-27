@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 export function SettingsView() {
   const gmail = useResource(api.gmailStatus);
+  const gmailResult = useSearchParams().get("gmail");
   const scans = useLiveScans();
   const { agents, agentsError, session, sessionError } = useLive();
   const now = useNow();
@@ -63,6 +65,12 @@ export function SettingsView() {
         )
       ) : null}
 
+      {gmailResult === "error" ? (
+        <ContextNotice tone="critical" title="Gmail was not connected">
+          Google didn&apos;t grant access, or the sign-in expired. Try Connect Gmail again.
+        </ContextNotice>
+      ) : null}
+
       <TablePanel title="Integrations" meta="3 integrations">
         {gmail.error ? <ErrorNotice error={gmail.error} onRetry={gmail.reload} /> : null}
         {!gmail.data && !gmail.error ? (
@@ -95,7 +103,7 @@ export function SettingsView() {
                     </Button>
                   ) : (
                     <Button size="sm" asChild>
-                      {/* Spring's OAuth2 client endpoint; a full navigation, not a client route. */}
+                      {/* Spring's Gmail OAuth endpoint; a full navigation, not a client route. */}
                       <a href={GMAIL_CONNECT_URL}>Connect Gmail</a>
                     </Button>
                   )}

@@ -22,6 +22,9 @@ function describeFailure(error: unknown, method: "passkey" | "password"): Failur
       detail: "Ask an organization administrator to review your membership.",
     };
   }
+  if (error instanceof ApiError && error.status === 400) {
+    return { tone: "warning", title: "Bot check failed", detail: "Complete the challenge again, then sign in." };
+  }
   if (error instanceof ApiError && error.status === 401) {
     return { tone: "critical", title: "Sign-in failed", detail: "The email or password is incorrect." };
   }

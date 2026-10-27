@@ -47,12 +47,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
   if (!response.ok) {
-    throw new ApiError(response.status, (await response.text().catch(() => "")) || response.statusText);
+    throw new ApiError(response.status, await errorMessage(response));
   }
   if (response.status === 204 || response.headers.get("content-length") === "0") {
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+// Spring answers with RFC 7807 problem details (docs/protocol.md); show their `detail`.
+async function errorMessage(response: Response) {
+  const text = await response.text().catch(() => "");
+  try {
+    const problem = JSON.parse(text) as { detail?: unknown; title?: unknown };
+    if (typeof problem.detail === "string" && problem.detail) return problem.detail;
+    if (typeof problem.title === "string" && problem.title) return problem.title;
+  } catch {
+    // Not JSON: fall through to the raw text.
+  }
+  return text || response.statusText || `Request failed (${response.status})`;
 }
 
 const get = <T>(path: string) => request<T>(path);
