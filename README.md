@@ -167,7 +167,7 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 scripts/build.sh run                  # dev: embedded Postgres + Redis with demo data, API :8080,
                                       #      dashboard :3000 (next dev), daemon in --dry-run
 scripts/build.sh run --prod           # Docker Postgres + Redis, dist/obsidian-backend.jar, next start
-                                      #      (builds the jar / dashboard first if they're missing)
+                                      #      (first brings the jar, daemon and dashboard up to date)
 scripts/build.sh run --daemon-root    # real enforcement: the daemon runs with sudo (iptables, /etc/hosts)
 scripts/build.sh run --no-daemon      # API and dashboard only
 scripts/build.sh run --agent-token f  # use an agent token you registered yourself

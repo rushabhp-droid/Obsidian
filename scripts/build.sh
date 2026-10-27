@@ -17,7 +17,7 @@
 #   scripts/build.sh run              dev: embedded Postgres + Redis with demo data (no Docker),
 #                                     API :8080, dashboard :3000 (next dev), daemon in --dry-run
 #   scripts/build.sh run --prod       Docker Postgres + Redis, dist/obsidian-backend.jar, next start
-#                                     (builds whatever is missing first)
+#                                     (first brings the jar, daemon and dashboard up to date)
 #     --no-daemon                     don't start the firewall daemon
 #     --daemon-root                   real enforcement: run the daemon with sudo (iptables, /etc/hosts)
 #     --agent-token FILE              use this agent token instead of having the backend register one
@@ -169,6 +169,14 @@ turnstile_site_key() {
 web_build_settings() {
   printf 'api=%s origin=%s turnstile=%s\n' "${NEXT_PUBLIC_API_MODE:-live}" "${SPRING_ORIGIN:-http://localhost:8080}" \
     "$(turnstile_site_key)"
+}
+
+# True when web-dashboard/.next is missing, older than its sources, or built with other settings.
+web_build_stale() {
+  local web="$ROOT/web-dashboard" built="$ROOT/web-dashboard/.next/BUILD_ID"
+  [ -f "$built" ] || return 0
+  [ "$(cat "$web/.next/obsidian-build-settings" 2>/dev/null)" = "$(web_build_settings)" ] || return 0
+  [ -n "$(find "$web/src" "$web/public" "$web/next.config.ts" "$web/package-lock.json" -newer "$built" -print -quit 2>/dev/null)" ]
 }
 
 build_web() {
@@ -343,10 +351,13 @@ run_all() {
     (cd "$ROOT" && docker compose up -d --wait)
     (cd "$ROOT" && docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 \
         -U "${POSTGRES_USER:-obsidian}" -d "${POSTGRES_DB:-obsidian}" < "$seed") >/dev/null
-    [ -f "$DIST/obsidian-backend.jar" ] || { SKIP_TESTS=1; build_backend; }
-    if [ ! -f "$ROOT/web-dashboard/.next/BUILD_ID" ] \
-        || [ "$(cat "$ROOT/web-dashboard/.next/obsidian-build-settings" 2>/dev/null)" != "$(web_build_settings)" ]; then
-      SKIP_TESTS=1; build_web   # missing, or built with other API mode / origin / Turnstile key
+    # Always bring the jar up to date (Gradle skips the work when nothing changed): an old jar silently
+    # lacks newer behaviour, e.g. the startup setup that writes the agent token.
+    SKIP_TESTS=1 build_backend
+    if web_build_stale; then
+      SKIP_TESTS=1 build_web
+    else
+      echo "dashboard build is up to date"
     fi
     step "starting backend (dist/obsidian-backend.jar)"
     start backend "$ROOT" "$JAVA_HOME/bin/java" -jar "$DIST/obsidian-backend.jar" "${boot_args[@]}"
@@ -360,7 +371,7 @@ run_all() {
     # The startup setup runs just after the server opens its port; wait until it has written a token
     # this database accepts (demo rules are applied before that).
     local ok=0
-    for _ in $(seq 1 60); do
+    for _ in $(seq 1 30); do
       [ -s "$token_file" ] && token_accepted "$token_file" && { ok=1; break; }
       kill -0 "${PIDS[backend]}" 2>/dev/null || break
       sleep 1
@@ -381,7 +392,7 @@ run_all() {
 
   if [ "$WITH_DAEMON" = 1 ]; then
     need cargo "install a Rust stable toolchain, or pass --no-daemon"
-    [ -x "$ROOT/daemon-rust/target/release/daemon-rust" ] || (cd "$ROOT/daemon-rust" && cargo build --release --quiet)
+    (cd "$ROOT/daemon-rust" && cargo build --release --quiet)   # incremental: quick when nothing changed
     if [ -n "$AGENT_TOKEN" ]; then
       token_accepted "$token_file" \
         || fail "the backend doesn't know the agent token in $AGENT_TOKEN (401); register the agent again on Endpoint Security"
