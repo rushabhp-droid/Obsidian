@@ -22,7 +22,7 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). Field names are checked by `ApiContractTest`. |
 | `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
 
-Tests: backend 220/220 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
+Tests: backend 224/224 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
 ### What is left
 1. **Hour 8 milestone on real hardware:** run the daemon as root (no `--dry-run`), add a domain in the web editor and check that `curl` is blocked, then bypass and check that it works again.
@@ -378,7 +378,7 @@ What each target does:
 
 | Target | Tests | Build | Needs |
 | --- | --- | --- | --- |
-| `backend` | `gradle test`: 220 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `backend` | `gradle test`: 224 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
 
