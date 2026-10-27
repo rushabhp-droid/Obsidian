@@ -15,6 +15,7 @@ Phishing and scam campaigns don't stick to one channel. The same malicious domai
 - **The channels don't share what they learn.** An email filter that flags a domain doesn't tell the phone's messaging app, and neither of them tells the network firewall. Whoever spots a threat first can't protect anyone else.
 - **Users who spot threats have nowhere to send them.** When a phishing email gets past the filter, the user who notices it usually has no one-click way to report it, and reporting it doesn't protect their colleagues.
 - **Consumers are mostly unprotected outside email.** Smishing and WhatsApp scams reach people who have no security team. They are especially effective from unknown numbers, or from familiar contacts whose accounts were compromised.
+- **Code is a channel too.** API keys get committed in plain text, vulnerable dependencies ship unnoticed, and a release binary can carry malware. Teams rarely connect these signals to the rest of their defenses.
 - **Bypassing a block is all or nothing.** False positives are common. Blocks that are rigid get disabled wholesale, and overrides that never expire stay open forever.
 - **Authentication is still often just a password.** The dashboard that controls an organization's firewall should not be protected by a reusable password alone.
 
@@ -88,6 +89,7 @@ flowchart LR
 - **Rust endpoint daemon (Linux)** that enforces blocks with `iptables` and an `/etc/hosts` sinkhole. It resyncs the full rule set on every reconnect.
 - **SOC dashboard** with a live threat feed, agent heartbeat status, and a blacklist/whitelist editor.
 - **Time-bound bypasses** with an audit log *(stretch goal)*.
+- **Code Guard** *(stretch goal)*. A GitHub App that scans every push and pull request for leaked secrets (gitleaks) and vulnerable dependencies (OSV-Scanner). It also checks every release file against VirusTotal and posts a pass/fail check on the commit. Leaked keys are treated as compromised: Code Guard flags them for rotation and never stores the key itself.
 
 ### Security of the platform itself
 - Passkeys (WebAuthn/FIDO2) through Spring Security, with an Argon2id password fallback and optional TOTP.
@@ -109,6 +111,7 @@ flowchart LR
 | Data | PostgreSQL 16, Redis 7 (sessions, VirusTotal cache, pub/sub) |
 | Edge | Cloudflare named Tunnel, Cloudflare Turnstile |
 | Threat intel | VirusTotal API v3 |
+| Code scanning | GitHub App (webhooks + Checks API), gitleaks, OSV-Scanner |
 
 ---
 
@@ -116,7 +119,7 @@ flowchart LR
 
 ```text
 obsidian/
-├── backend-spring/     # Spring Boot control plane: auth, rules, scanner, Gmail, WebSockets
+├── backend-spring/     # Spring Boot control plane: auth, rules, scanner, Gmail, WebSockets, Code Guard
 ├── daemon-rust/        # Linux firewall agent (iptables + /etc/hosts sinkhole)
 ├── web-dashboard/      # Next.js consumer portal + SOC dashboard
 ├── mobile-android/     # Kotlin Android app
@@ -140,6 +143,7 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 - JDK 21, Node.js 20+, a Rust stable toolchain, and Android Studio
 - A Linux machine for the daemon (it needs root, or `CAP_NET_ADMIN` plus write access to `/etc/hosts`)
 - A VirusTotal API key, a Google Cloud OAuth client (Gmail API), and Cloudflare Turnstile keys
+- *Optional, for Code Guard:* a GitHub App (Contents read, Checks write, Metadata read; events `push`, `pull_request`, `release`), plus `gitleaks` and `osv-scanner` on the server's `PATH`
 - *Optional:* a domain in Cloudflare for a named tunnel. Without one, use the `localhost` fallback.
 
 ### Configure
@@ -147,6 +151,7 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 cp .env.example .env
 # Fill in VT_API_KEY, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, APP_ENC_KEY,
 # TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY, RP_ID
+# Code Guard (optional): GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_WEBHOOK_SECRET
 ```
 
 ### Run
@@ -181,6 +186,9 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | `POST /api/v1/agents` | Register a daemon; its token is shown once |
 | `WS /ws/firewall` | Daemon channel: `SYNC`, `BLOCK`, `BYPASS`, `HEARTBEAT`, `ACK` |
 | `WS /ws/dashboard` | Live feed for the SOC dashboard |
+| `POST /api/v1/webhooks/github` | Code Guard webhook (signature-verified): push, pull request, release |
+| `GET /api/v1/code/findings` | List Code Guard findings for the organization |
+| `POST /api/v1/code/findings/{id}/status` | Mark a finding as rotated or a false positive |
 
 The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
 
@@ -193,6 +201,7 @@ The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
 - **VirusTotal's free tier** allows 4 requests/min and 500/day. Verdicts are cached for 24 hours, crowd reports are checked first, and anything unresolved is shown as `PENDING`.
 - **SIM change detection** detects a different SIM in *this* device. It doesn't by itself stop a carrier-side SIM swap.
 - **Mobile scanning is links only.** Notifications don't include attachments.
+- **Code Guard can't un-leak a key.** Once a key is pushed, clones and forks already have it. Code Guard detects it within seconds and drives rotation, but it can't stop the push on github.com, because blocking a push before it lands requires pre-receive hooks.
 
 ---
 
@@ -204,6 +213,12 @@ The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
 - Fleet management
 - Organization-wide Google Workspace scanning
 - Cloudflare WAF rules
+- Code Guard extras:
+  - Semgrep rules for malicious code
+  - Syft/Grype vulnerability scans of release binaries
+  - automatic key revocation through provider APIs
+  - blocking pushes before they land, on GitHub Enterprise Server or GitLab
+  - feeding domains found in malicious code into the firewall rules
 
 ---
 
@@ -211,7 +226,7 @@ The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
 
 | Role | Area |
 | --- | --- |
-| Dev 1 | Backend: auth, database, Redis, WebSockets, Gmail |
+| Dev 1 | Backend: auth, database, Redis, WebSockets, Gmail, Code Guard (stretch) |
 | Dev 2 | Threat intel: scanner, VirusTotal, email analysis, Rust daemon |
 | Dev 3 | Mobile: Android app, biometrics, message interception |
 | Dev 4 | Frontend: login, SOC dashboard, rule editor |
