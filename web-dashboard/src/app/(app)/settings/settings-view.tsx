@@ -71,6 +71,12 @@ export function SettingsView() {
           restart the backend. The README&apos;s &quot;Connect Gmail&quot; section lists every step.
         </ContextNotice>
       ) : null}
+      {gmailResult === "api-disabled" ? (
+        <ContextNotice tone="warning" title="Enable the Gmail API, then connect again">
+          Google signed you in, but the Gmail API is turned off in the Google Cloud project of this OAuth client.
+          Enable it under APIs &amp; Services → Library → Gmail API, wait a few minutes and connect Gmail again.
+        </ContextNotice>
+      ) : null}
       {gmailResult === "error" ? (
         <ContextNotice tone="critical" title="Gmail was not connected">
           Google didn&apos;t grant access, or the sign-in expired. Try Connect Gmail again.

@@ -83,6 +83,24 @@ class GmailControllersTest extends IntegrationTest {
     }
 
     @Test
+    void disabledGmailApiIsExplainedOnSettings() throws Exception {
+        String state = UriComponentsBuilder.fromUri(URI.create(startConsent())).build().getQueryParams().getFirst("state");
+        given(google.exchangeCode("auth-code", "http://localhost:3000/login/oauth2/code/google"))
+                .willReturn(new GmailClient.Tokens("ya29.access", "1//refresh"));
+        String body = "{\"error\":{\"code\":403,\"message\":\"Gmail API has not been used in project 797327540964 before or it is disabled.\","
+                + "\"status\":\"PERMISSION_DENIED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\","
+                + "\"reason\":\"SERVICE_DISABLED\",\"domain\":\"googleapis.com\"}]}}";
+        given(google.profileAddress("ya29.access")).willThrow(org.springframework.web.client.HttpClientErrorException.create(
+                org.springframework.http.HttpStatus.FORBIDDEN, "Forbidden", org.springframework.http.HttpHeaders.EMPTY,
+                body.getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.UTF_8));
+
+        mvc.perform(browser.cookies(get("/login/oauth2/code/google").param("code", "auth-code").param("state", state)))
+                .andExpect(redirectedUrl("/settings?gmail=api-disabled"));
+
+        assertThat(tokens.refreshToken(team.employee().userId())).isEmpty();
+    }
+
+    @Test
     void callbackWithAForeignStateIsRefused() throws Exception {
         startConsent();
 

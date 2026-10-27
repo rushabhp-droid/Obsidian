@@ -376,6 +376,7 @@ Gmail needs your own Google OAuth client. Without one, the backend has no client
 | Access blocked: "… has not completed the Google verification process" (403 `access_denied`) | The Google account isn't a test user | Add it under **Test users** (step 2) |
 | Error 400: `redirect_uri_mismatch` | The redirect URI in the client doesn't match `PUBLIC_BASE_URL` | Fix the URI in step 3, or `PUBLIC_BASE_URL` in `.env` |
 | Error 401: `invalid_client` | Wrong or mistyped client ID or secret | Copy both again from the client page |
+| Back on Settings with "Enable the Gmail API, then connect again" | Sign-in worked, but the Gmail API is disabled in the client's project | **APIs & Services → Library → Gmail API → Enable** (step 1), wait a few minutes, connect again |
 | Back on Settings with "Gmail was not connected" | Consent was cancelled, or Google returned no refresh token | Try again; remove Obsidian under myaccount.google.com → Security → Third-party connections first if it keeps failing |
 
 ### 7. Public demo through a named tunnel

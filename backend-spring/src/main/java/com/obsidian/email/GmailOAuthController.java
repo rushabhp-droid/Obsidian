@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.HttpClientErrorException;
 
 /**
  * "Connect Gmail" for the signed-in user. On Spring's usual OAuth2 paths (routed
@@ -67,10 +68,26 @@ public class GmailOAuthController {
             }
             tokens.save(account.userId(), granted.refreshToken(), google.profileAddress(granted.accessToken()));
             return redirect("/settings?gmail=connected");
+        } catch (HttpClientErrorException.Forbidden e) {
+            if (apiDisabled(e)) {
+                log.warn("Connecting Gmail failed: the Gmail API is disabled in the Google Cloud project of "
+                        + "GMAIL_CLIENT_ID; enable it (APIs & Services → Library → Gmail API) and connect again");
+                return redirect("/settings?gmail=api-disabled");
+            }
+            log.warn("Connecting Gmail failed: Google answered 403 ({})", e.getStatusText());
+            return redirect("/settings?gmail=error");
         } catch (RuntimeException e) {
-            log.warn("Connecting Gmail failed: {}", e.getMessage());
+            String reason = String.valueOf(e.getMessage()).replaceAll("\\s+", " ");
+            log.warn("Connecting Gmail failed: {}: {}", e.getClass().getSimpleName(),
+                    reason.length() > 200 ? reason.substring(0, 200) + "…" : reason);
             return redirect("/settings?gmail=error");
         }
+    }
+
+    /** Google's 403 when the Gmail API isn't enabled in the OAuth client's project. */
+    private static boolean apiDisabled(HttpClientErrorException e) {
+        String body = e.getResponseBodyAsString();
+        return body.contains("SERVICE_DISABLED") || body.contains("accessNotConfigured");
     }
 
     private static ResponseEntity<Void> redirect(String location) {
