@@ -20,6 +20,7 @@ Everything below is tagged **[P0]**, **[P1]** or **[ROADMAP]**. When time runs s
   * SIM change detection
   * Time-bound (TTL) enterprise bypass + audit log view
   * Daemon ACK latency ("applied in X ms") on the dashboard
+  * Code Guard GitHub App: gitleaks + OSV-Scanner on push, release asset hashes → VirusTotal, Check Run + dashboard card (see Module 5)
 * **[ROADMAP] Mention in the pitch, do not build:**
   * Windows (`netsh`) and macOS (`pfctl`) daemon support
   * Android DNS/VPN warn mode
@@ -27,6 +28,7 @@ Everything below is tagged **[P0]**, **[P1]** or **[ROADMAP]**. When time runs s
   * Fleet management
   * Org-wide Google Workspace scanning (needs domain-wide delegation with a service account)
   * Cloudflare WAF rules
+  * Code Guard extras: Semgrep malicious-code rules, Syft/Grype binary SBOM scanning, automatic key revocation via provider APIs, pre-receive push blocking (GitHub Enterprise Server / GitLab), feeding domains found in malicious code into `threat_rules`
 
 ---
 
@@ -41,6 +43,7 @@ Obsidian is a real-time, cross-channel cybersecurity platform protecting **Regul
 | **Firewall Enforcement** | Personal Whitelist/Blacklist management (Android DNS/VPN warn mode: [ROADMAP]) | **Rust System Daemon** on employee machines enforcing `iptables` & `/etc/hosts` sinkholes in real time (Linux; Windows/macOS: [ROADMAP]) |
 | **Bypass Policy** | Instant self-service user bypass (adds to personal Whitelist) | **Time-bound TTL Bypass** (e.g., 15-min override via `threat_rules.expires_at`) with Admin Audit Logging [P1] |
 | **Device Integrity** | Biometric Fingerprint Lock (PIN fallback) + SIM Change Alert [P1] | Live daemon heartbeat on the SOC dashboard (device posture gating: [ROADMAP]) |
+| **Code & Releases** | Not offered | **Code Guard** GitHub App: leaked secrets, vulnerable dependencies and malicious release binaries flagged on every push and release [P1] |
 
 ---
 
@@ -85,7 +88,7 @@ obsidian/
 ├── README.md
 ├── TODO.md
 ├── .gitignore                        # .env, client_secret.json, cloudflared credentials, build outputs
-├── .env.example                      # VT_API_KEY, GMAIL_CLIENT_ID/SECRET, APP_ENC_KEY, TURNSTILE keys, RP_ID
+├── .env.example                      # VT_API_KEY, GMAIL_CLIENT_ID/SECRET, APP_ENC_KEY, TURNSTILE keys, RP_ID, GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_PATH, GITHUB_WEBHOOK_SECRET
 ├── docker-compose.yml                # PostgreSQL 16 + Redis 7; mounts db/ into /docker-entrypoint-initdb.d
 ├── db/init.sql                       # Schema incl. Spring WebAuthn tables (Hibernate ddl-auto=validate)
 ├── cloudflared/config.yml            # Named tunnel + path ingress (credentials JSON gitignored)
@@ -102,6 +105,7 @@ obsidian/
 │           ├── scanner/              # ScanController (/api/v1/scan/unified), ScanService, VirusTotalClient, HeaderAuthValidator (SPF/DKIM/DMARC), AttachmentHasher, HeuristicClassifier
 │           ├── email/                # GmailOAuthController, GmailPollingWorker (hands raw messages to ScanService)
 │           ├── firewall/             # FirewallWebSocketHandler (/ws/firewall), DashboardWebSocketHandler (/ws/dashboard), RedisPubSubListener, AgentController
+│           ├── codeguard/            # [P1] GitHubWebhookController (/api/v1/webhooks/github), WebhookSignatureVerifier, GitHubAppClient, RepoScanJob (gitleaks + osv-scanner), ReleaseScanJob (asset hashes → VirusTotalClient), CheckRunPublisher, CodeFinding
 │           ├── audit/                # AuditLog, AuditService
 │           └── model/                # Shared JPA entities + Spring Data repositories (User, Organization, ScanLog, EndpointAgent)
 ├── daemon-rust/                      # Rust B2B OS Firewall Daemon (Linux)
@@ -127,6 +131,7 @@ obsidian/
 │       │       ├── firewall/         # Interactive Blacklist/Whitelist Editor & Bypass toggles
 │       │       ├── agents/           # Register daemon, show bearer token once, heartbeat status
 │       │       ├── audit/            # Audit log view [P1]
+│       │       ├── code/             # Code Guard findings per repo, push and release [P1]
 │       │       └── settings/         # Connect Gmail (OAuth start), TOTP enrollment [P1]
 │       ├── components/ui/            # shadcn/ui components
 │       └── lib/
@@ -221,7 +226,7 @@ CREATE TABLE endpoint_agents (
 CREATE TABLE scan_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    channel VARCHAR(20) NOT NULL,        -- 'EMAIL', 'SMS', 'WHATSAPP', 'FIREWALL'
+    channel VARCHAR(20) NOT NULL,        -- 'EMAIL', 'SMS', 'WHATSAPP', 'FIREWALL', 'CODE'
     sender VARCHAR(255),
     indicator_checked TEXT,
     verdict VARCHAR(20) NOT NULL,        -- 'CLEAN', 'SUSPICIOUS', 'MALICIOUS', 'BYPASSED', 'PENDING'
@@ -238,6 +243,26 @@ CREATE TABLE audit_logs (
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 7. Code Guard findings [P1]
+-- Never store a secret's value. Store the detector rule, location and a
+-- fingerprint (SHA-256 of the secret) so repeat leaks can be matched.
+CREATE TABLE code_findings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    repo_full_name VARCHAR(255) NOT NULL,  -- 'acme/payments-api'
+    trigger VARCHAR(10) NOT NULL,          -- 'PUSH', 'PR', 'RELEASE'
+    git_ref VARCHAR(255) NOT NULL,         -- commit SHA or release tag
+    finding_type VARCHAR(20) NOT NULL,     -- 'SECRET', 'VULN_DEPENDENCY', 'MALICIOUS_BINARY', 'VULN_BINARY'
+    severity VARCHAR(10) NOT NULL,         -- 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'
+    rule_id VARCHAR(120) NOT NULL,         -- gitleaks rule, OSV/CVE id, or 'VT:<detections>'
+    location TEXT,                         -- path:line, package@version, or asset filename
+    secret_fingerprint VARCHAR(64) NULL,   -- SHA-256 of the secret, never the secret itself
+    status VARCHAR(12) NOT NULL DEFAULT 'OPEN', -- 'OPEN', 'REVOKED', 'FALSE_POSITIVE'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_code_findings_org ON code_findings (org_id, created_at DESC);
 ```
 
 ### B. Rule Precedence (implement once in `RulePrecedence`, use everywhere)
@@ -360,6 +385,31 @@ When several rules match one indicator, the first match wins:
 
 ---
 
+### Module 5: Code Guard, B2B Code & Release Scanning [P1]
+Build only after the hour 8 milestone passes. If it slips, cut this module and keep it as a pitch line.
+
+1. **GitHub App setup [P1]:**
+   * One GitHub App per demo org, installed on the demo repos. Permissions: Contents (read), Checks (write), Metadata (read). Events: `push`, `pull_request`, `release`.
+   * Webhook URL: `https://obsidian.<your-domain>/api/v1/webhooks/github` (already routed to Spring by the `/api` ingress rule).
+   * **Verify `X-Hub-Signature-256`** (HMAC-SHA256 of the raw body with `GITHUB_WEBHOOK_SECRET`, constant-time compare) before parsing anything. Reject unsigned or mismatched requests with 401.
+   * Respond 202 immediately and run scans on a virtual-thread executor; GitHub times out webhooks after 10 s.
+   * Map the App installation to `organizations.id` once at install time.
+2. **Push / PR scan [P1]:**
+   * Shallow-clone the pushed ref into a fresh temp directory with an installation token; delete the directory when done.
+   * Run `gitleaks detect --no-git --report-format json` (secrets) and `osv-scanner --format json` (vulnerable dependencies). Invoke both with `ProcessBuilder` and an argument list, **never a shell**, with a timeout.
+   * Write each result to `code_findings`. For secrets, store only the rule, `path:line` and SHA-256 fingerprint. **Never store, log or display the secret value**; mask it to its first 4 characters in the UI.
+   * Publish a GitHub Check Run: `failure` if any CRITICAL/HIGH finding, otherwise `success`, with file/line annotations.
+   * Publish the finding on `channel:firewall:events` so it appears in the SOC dashboard live feed.
+3. **Release scan [P1]:**
+   * On `release.published`, download each asset (cap 100 MB per asset), compute SHA-256 and resolve it through the existing `VirusTotalClient` (same Redis cache, 4 req/min limiter, `PENDING` rule). ≥3 detections = `MALICIOUS_BINARY` / CRITICAL.
+4. **Leaked secrets: what the bot does and does not do:**
+   * A pushed or released key is **compromised**. Forks, clones and caches already have it. Masking it or rewriting history does not make it safe.
+   * The bot detects, alerts and opens a finding that tells the owner to **rotate the key**. Status moves to `REVOKED` once an admin confirms rotation.
+   * Automatic revocation through provider APIs and blocking the push before it lands (pre-receive hooks, which github.com does not offer to third-party apps) are [ROADMAP].
+5. **SOC dashboard [P1]:** `code/` page listing findings per repo with severity, location, status, and actions "Mark rotated" / "False positive" (both write `audit_logs`).
+
+---
+
 ## 6. Core API Specification
 
 | Method & Endpoint | Consumer | Purpose & Payload Summary |
@@ -373,7 +423,10 @@ When several rules match one indicator, the first match wins:
 | `POST /api/v1/rules/bypass` | Web / Mobile | Upserts an indicator into `WHITELIST` (optional `ttlMinutes`, required for enterprise users) & removes active Firewall block. |
 | `POST /api/v1/agents` | Web (Admin) | Registers a daemon for the org; returns its bearer token once. |
 | `WS /ws/firewall` | Rust Daemon | Bearer-token authenticated. Server → daemon: `{"type":"SYNC","rules":[...]}` on connect, then `{"type":"BLOCK\|BYPASS","ruleId":"...","indicator_type":"IP\|DOMAIN","value":"..."}`. Daemon → server: `{"type":"HEARTBEAT"}` every 10 s, `{"type":"ACK",...}` [P1]. |
-| `WS /ws/dashboard` | Web | Session-cookie authenticated. Server → browser: rule events from `channel:firewall:events`, new scan verdicts, agent heartbeat/online status. |
+| `WS /ws/dashboard` | Web | Session-cookie authenticated. Server → browser: rule events from `channel:firewall:events`, new scan verdicts, agent heartbeat/online status, Code Guard findings. |
+| `POST /api/v1/webhooks/github` | GitHub | [P1] HMAC-verified (`X-Hub-Signature-256`). Accepts `push`, `pull_request`, `release`; returns 202 and scans asynchronously. |
+| `GET /api/v1/code/findings` | Web (Admin) | [P1] Lists `code_findings` for the org, filterable by repo, type, severity, status. |
+| `POST /api/v1/code/findings/{id}/status` | Web (Admin) | [P1] `{ "status": "REVOKED\|FALSE_POSITIVE" }`, writes `audit_logs`. |
 
 ---
 
@@ -454,6 +507,7 @@ When several rules match one indicator, the first match wins:
   * [ ] Dev 2: Heuristic/LLM classifier (Branch B) + `BypassExpiryJob`
   * [ ] Dev 3: SIM change detection
   * [ ] Dev 4: TTL bypass UI + audit log view
+  * [ ] Whoever finishes first (likely Dev 1): Code Guard webhook + gitleaks/OSV push scan + release hashes → VirusTotal + Check Run; Dev 4 adds the `code/` page
 
 ### Phase 5: UI Polish, Seed Data & Pitch Rehearsal (Hours 18:00 – 24:00)
 * [ ] Pre-populate PostgreSQL with realistic enterprise threat telemetry so charts and logs look rich
@@ -489,3 +543,4 @@ When several rules match one indicator, the first match wins:
 * *"What if the server sends a malicious rule to the daemon?"* → Every value is parsed as an IP or domain and passed as an argument, never through a shell. Agents authenticate with per-device tokens.
 * *"Can't browsers bypass `/etc/hosts`?"* → Yes, with DNS-over-HTTPS. Known-bad IPs are still dropped by `iptables`, and a DNS/VPN filtering layer for domains is on the roadmap.
 * *"What about VirusTotal rate limits?"* → Redis cache with 24 h TTL, a client-side limiter, crowd-reported rules checked first, and `PENDING` instead of a false `SAFE`.
+* *"Can Code Guard hide a leaked API key?"* → No, and nothing can: once pushed, it's compromised. Code Guard catches it within seconds of the push, never stores the value, and drives rotation. Blocking the push itself needs pre-receive hooks, which is on the roadmap.
