@@ -13,9 +13,11 @@ interface LiveState {
   /** /ws/dashboard is open. */
   socketConnected: boolean;
   /** Rule and scan events received since the page loaded, newest first. */
-  events: Exclude<DashboardEvent, { type: "HEARTBEAT" }>[];
+  events: Exclude<DashboardEvent, { type: "HEARTBEAT" } | { type: "CODE_FINDING" }>[];
   /** Increments on every BLOCK / BYPASS event, so rule lists know to refetch. */
   ruleVersion: number;
+  /** Increments on every Code Guard finding (admins only). */
+  codeVersion: number;
   /** Agents with heartbeats from the socket merged in. */
   agents: EndpointAgent[] | undefined;
   agentsError: Error | undefined;
@@ -32,6 +34,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<LiveState["events"]>([]);
   const [socketConnected, setSocketConnected] = useState(false);
   const [ruleVersion, setRuleVersion] = useState(0);
+  const [codeVersion, setCodeVersion] = useState(0);
   const { mutate: mutateAgents } = agents;
 
   useEffect(() => {
@@ -47,6 +50,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           mutateAgents((list = []) =>
             list.map((a) => (a.id === event.agentId ? { ...a, lastHeartbeatAt: event.at } : a)),
           );
+        } else if (event.type === "CODE_FINDING") {
+          setCodeVersion((v) => v + 1);
         } else {
           setEvents((list) => [event, ...list].slice(0, 25));
           if (event.type !== "SCAN") setRuleVersion((v) => v + 1);
@@ -62,11 +67,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       socketConnected,
       events,
       ruleVersion,
+      codeVersion,
       agents: agents.data,
       agentsError: agents.error,
       reloadAgents: agents.reload,
     }),
-    [session.data, session.error, socketConnected, events, ruleVersion, agents.data, agents.error, agents.reload],
+    [session.data, session.error, socketConnected, events, ruleVersion, codeVersion, agents.data, agents.error, agents.reload],
   );
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;

@@ -60,6 +60,8 @@ public class SecurityConfig {
                 .securityContext(context -> context.securityContextRepository(contextRepository))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+                        // GitHub can't sign in; the controller checks X-Hub-Signature-256 instead.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/github").permitAll()
                         .requestMatchers("/ws/firewall").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
@@ -72,7 +74,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                        .ignoringRequestMatchers("/api/v1/auth/login", "/api/v1/auth/register",
+                        .ignoringRequestMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/webhooks/github",
                                 "/webauthn/authenticate/options", "/login/webauthn")
                         .ignoringRequestMatchers(bearerRequest))
                 .addFilterAfter(new PasskeyLoginGuardFilter(turnstile), SecurityContextHolderFilter.class)

@@ -36,7 +36,9 @@ public class DashboardWebSocketHandler extends TextWebSocketHandler {
         TextMessage message = new TextMessage(envelope.event().toString());
         for (WebSocketSession session : sessions.values()) {
             Account account = (Account) session.getAttributes().get(DashboardHandshakeInterceptor.ACCOUNT);
-            if (account != null && sees(account, envelope.orgId(), envelope.userId())) {
+            boolean adminOnly = envelope.kind() == EventEnvelope.Kind.CODE; // Code Guard findings are SOC-only
+            if (account != null && sees(account, envelope.orgId(), envelope.userId())
+                    && (!adminOnly || account.isAdmin())) {
                 try {
                     session.sendMessage(message);
                 } catch (IOException | IllegalStateException e) {

@@ -6,6 +6,7 @@
 import { mockApi } from "./mock-store";
 import type {
   BypassRequest,
+  CodeFinding,
   EndpointAgent,
   GmailConnection,
   RegisteredAgent,
@@ -89,6 +90,11 @@ const live = {
   listEmails: () => get<ScannedEmail[]>("/api/v1/emails"),
   gmailStatus: () => get<GmailConnection>("/api/v1/integrations/gmail"),
   disconnectGmail: () => post<void>("/api/v1/integrations/gmail/disconnect"),
+
+  // Code Guard [P1], admins only.
+  listCodeFindings: () => get<CodeFinding[]>("/api/v1/code/findings"),
+  setCodeFindingStatus: (id: string, status: "REVOKED" | "FALSE_POSITIVE") =>
+    post<CodeFinding>(`/api/v1/code/findings/${encodeURIComponent(id)}/status`, { status }),
 };
 
 export const api: typeof live = API_MODE === "live" ? live : mockApi;

@@ -515,7 +515,7 @@ Build only after the hour 8 milestone passes. If it slips, cut this module and k
   * [ ] Dev 2: Heuristic/LLM classifier (Branch B) + `BypassExpiryJob`
   * [ ] Dev 3: SIM change detection
   * [ ] Dev 4: TTL bypass UI + audit log view
-  * [ ] Whoever finishes first (likely Dev 1): Code Guard webhook + gitleaks/OSV push scan + release hashes → VirusTotal + Check Run; Dev 4 adds the `code/` page
+  * [x] Whoever finishes first (likely Dev 1): Code Guard webhook + gitleaks/OSV push scan + release hashes → VirusTotal + Check Run; Dev 4 adds the `code/` page (built before the hour 8 milestone at the user's request)
 
 ### Phase 5: UI Polish, Seed Data & Pitch Rehearsal (Hours 18:00 – 24:00)
 * [x] Pre-populate PostgreSQL with realistic enterprise threat telemetry so charts and logs look rich (`scripts/build.sh demo` + `run --demo`)

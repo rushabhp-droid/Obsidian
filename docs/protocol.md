@@ -243,16 +243,47 @@ Server → browser frames (the `DashboardEvent` union in `web-dashboard/src/lib/
 { "type": "BLOCK", "ruleId": "4a0e5c7f-…", "indicator_type": "DOMAIN", "value": "testsafebrowsing.appspot.com", "at": "2026-10-27T10:15:00Z" }
 { "type": "SCAN", "scan": { "id": "…", "channel": "SMS", "sender": "+15550100", "indicatorChecked": "…", "verdict": "SUSPICIOUS", "vtPositives": 2, "createdAt": "…" } }
 { "type": "HEARTBEAT", "agentId": "a9000001-…", "hostname": "build-linux-01", "at": "2026-10-27T10:15:00Z" }
+{ "type": "CODE_FINDING", "finding": { …CodeFinding… } }
 ```
+
+`CODE_FINDING` frames go to the organization's admins only.
 
 Rule events cover every indicator type, so rule lists know to refetch. Org-level events reach everyone in the
 organization; user-level events reach that user and the organization's admins.
+
+## Code Guard [P1]
+
+A GitHub App per organization (Contents read, Checks write, Metadata read; events push, pull request,
+release). Findings belong to the organization of `CODEGUARD_ORG_ADMIN_EMAIL`.
+
+| Endpoint | Notes |
+| --- | --- |
+| `POST /api/v1/webhooks/github` | GitHub only. `X-Hub-Signature-256` is checked (HMAC-SHA256 of the raw body, constant-time) before anything is parsed: `401` if it doesn't match, `503` if Code Guard isn't configured, otherwise `202` and the scan runs asynchronously |
+| `GET /api/v1/code/findings?repo=&type=&severity=&status=` | Admins. `CodeFinding[]`, newest first, at most 500 |
+| `POST /api/v1/code/findings/{id}/status` | Admins. `{"status":"REVOKED\|FALSE_POSITIVE"}`; writes `audit_logs` (`CODE_FINDING_STATUS`) |
+
+```json
+{ "id": "f7000001-…", "repoFullName": "acme/payments-api", "trigger": "PUSH", "gitRef": "9c41e2b…",
+  "findingType": "SECRET", "severity": "CRITICAL", "ruleId": "aws-access-token", "location": "config/settings.py:3",
+  "secretFingerprint": "3f8a1c9e…", "status": "OPEN", "createdAt": "2026-10-27T10:15:00Z" }
+```
+
+- **Push and pull request** (`opened`, `synchronize`, `reopened`): the commit's zipball is extracted into a fresh
+  temp dir (deleted afterwards), then `gitleaks detect --no-git` finds leaked secrets (`SECRET`, `CRITICAL`) and
+  `osv-scanner --recursive` finds vulnerable dependencies (`VULN_DEPENDENCY`, severity from CVSS: ≥9 critical,
+  ≥7 high, ≥4 medium). A Check Run "Obsidian Code Guard" is posted: `failure` with any critical or high finding,
+  `neutral` when a scanner isn't installed, else `success`, with up to 50 file/line annotations.
+- **Release** (`published`): each asset (up to 100 MB) is hashed while streaming and looked up through the shared
+  VirusTotal client: 3+ detections is `MALICIOUS_BINARY` `CRITICAL`, 1–2 is `MEDIUM`; `ruleId` is `VT:<detections>`.
+  Unknown files stay `PENDING` and get no finding.
+- A secret's value is never stored, logged or sent. `secretFingerprint` is its SHA-256. A leaked key is
+  compromised: the fix is rotating it, then marking the finding `REVOKED`.
 
 ## Redis
 
 | Key / channel | Value |
 | --- | --- |
-| `channel:firewall:events` | `{"kind":"RULE\|SCAN\|HEARTBEAT","orgId":"…\|null","userId":"…\|null","event":{…}}`, where `event` is the `/ws/dashboard` frame |
+| `channel:firewall:events` | `{"kind":"RULE\|SCAN\|HEARTBEAT\|CODE","orgId":"…\|null","userId":"…\|null","event":{…}}`, where `event` is the `/ws/dashboard` frame |
 | `vt:cache:<id>` | `{"verdict":"MALICIOUS","malicious":14,"suspicious":1,"category":"PHISHING","checkedAt":"…"}`, TTL 86,400 s. `<id>` is the lowercase SHA-256 for files, or the VirusTotal URL id (unpadded base64url of the URL exactly as scanned) |
 | `vt:pending:<url id>` | VirusTotal analysis id of a submitted URL, TTL 3,600 s |
 | `vt:notfound:<sha256>` | `1` when VirusTotal doesn't know a file, TTL 3,600 s |

@@ -149,6 +149,23 @@ class ApiContractTest extends IntegrationTest {
         assertThat(keys(listed)).isEqualTo(types.fields("EndpointAgent"));
     }
 
+    @Autowired com.obsidian.codeguard.CodeFindingRepository codeFindings;
+
+    @Test
+    void codeFindingMatches() throws Exception {
+        codeFindings.save(new com.obsidian.codeguard.CodeFinding(team.org().getId(), "acme/api",
+                com.obsidian.codeguard.CodeFinding.Trigger.PUSH, "abc1234", com.obsidian.codeguard.CodeFinding.Type.SECRET,
+                com.obsidian.codeguard.CodeFinding.Severity.CRITICAL, "aws-access-token", "config/settings.py:3", "f".repeat(64)));
+
+        JsonNode finding = json(get("/api/v1/code/findings")).get(0);
+
+        assertThat(keys(finding)).isEqualTo(types.fields("CodeFinding"));
+        assertThat(types.union("CodeTrigger")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Trigger.values()));
+        assertThat(types.union("CodeFindingType")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Type.values()));
+        assertThat(types.union("CodeSeverity")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Severity.values()));
+        assertThat(types.union("CodeFindingStatus")).isEqualTo(names(com.obsidian.codeguard.CodeFinding.Status.values()));
+    }
+
     @Test
     void reportAndBypassRequestBodiesUseTheDashboardFieldNames() {
         assertThat(types.fields("ReportRequest")).containsExactlyInAnyOrder("indicatorType", "indicatorValue", "threatCategory");

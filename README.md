@@ -20,15 +20,16 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `backend-spring/` WebSockets + agents | Done: `/ws/firewall` (bearer handshake, SYNC, BLOCK/BYPASS, HEARTBEAT), `/ws/dashboard`, Redis fan-out, `POST/GET /agents`. |
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
 | `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). Field names are checked by `ApiContractTest`. |
+| Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
 | `mobile-android/` | Not started: clickable prototype only (`docs/prototype/android.html`). The scan and report API it needs is ready. |
 
-Tests: backend 232/232 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
+Tests: backend 256/256 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`).
 
 ### What is left
 1. **Hour 8 milestone on real hardware:** run the daemon as root (no `--dry-run`), add a domain in the web editor and check that `curl` is blocked, then bypass and check that it works again.
 2. **Android app** (P0): biometric lock, notification listener (WhatsApp/SMS), scan and Report. See `docs/protocol.md`; report the link's domain as `DOMAIN` so daemons block it.
 3. **Demo setup:** named tunnel + domain, real Turnstile keys, `VT_API_KEY` and `scripts/prewarm-vt.sh`, Gmail OAuth client in Testing mode with test users.
-4. **[P1], only after the milestone:** TOTP, heuristic classifier, SIM change detection, `BypassExpiryJob`, TTL picker and audit log view, daemon ACK latency, Code Guard.
+4. **[P1], only after the milestone:** TOTP, heuristic classifier, SIM change detection, `BypassExpiryJob`, TTL picker and audit log view, daemon ACK latency. (Code Guard is built.)
 
 ---
 
@@ -113,7 +114,7 @@ flowchart LR
 - **Rust endpoint daemon (Linux)** that enforces blocks with `iptables` and an `/etc/hosts` sinkhole. It resyncs the full rule set on every reconnect.
 - **SOC dashboard** with a live threat feed, agent heartbeat status, and a blacklist/whitelist editor.
 - **Time-bound bypasses** with an audit log *(stretch goal)*.
-- **Code Guard** *(stretch goal)*. A GitHub App that scans every push and pull request for leaked secrets (gitleaks) and vulnerable dependencies (OSV-Scanner). It also checks every release file against VirusTotal and posts a pass/fail check on the commit. Leaked keys are treated as compromised: Code Guard flags them for rotation and never stores the key itself.
+- **Code Guard**. A GitHub App that scans every push and pull request for leaked secrets (gitleaks) and vulnerable dependencies (OSV-Scanner). It also checks every release file against VirusTotal and posts a pass/fail check on the commit. Leaked keys are treated as compromised: Code Guard flags them for rotation and never stores the key itself.
 
 ### Security of the platform itself
 - Passkeys (WebAuthn/FIDO2) through Spring Security, with an Argon2id password fallback and optional TOTP.
@@ -395,6 +396,33 @@ Phones and daemons on other machines use `https://obsidian.<your-domain>` and `w
 
 > Don't use a Cloudflare *quick* tunnel. Its hostname changes on every restart, which breaks passkeys and Turnstile.
 
+### Code Guard: the GitHub bot (optional, [P1])
+Code Guard scans:
+- **Every push and pull request** for leaked secrets (gitleaks) and vulnerable dependencies (OSV-Scanner).
+- **Every published release** for malicious binaries: each asset's SHA-256 goes to VirusTotal.
+
+It posts an **Obsidian Code Guard** check on the commit and lists findings on the dashboard's **Code Guard** page. Detecting malicious code patterns (Semgrep) and scanning release binaries for vulnerable components (Syft/Grype) are [ROADMAP].
+
+1. **Scanners on the server:** install [gitleaks](https://github.com/gitleaks/gitleaks) and [osv-scanner](https://github.com/google/osv-scanner) on the backend machine's `PATH`. On Arch: `pacman -S gitleaks osv-scanner`; elsewhere, use the release binaries. A missing scanner is reported in the Check Run as "neutral" instead of failing.
+2. **Public URL:** GitHub has to reach the webhook, so use the named tunnel (step 7). For local experiments, a relay such as smee.io works too.
+3. **GitHub App:** github.com → Settings → Developer settings → GitHub Apps → **New GitHub App**.
+   - Webhook URL: `https://obsidian.<your-domain>/api/v1/webhooks/github`.
+   - Webhook secret: `openssl rand -hex 32`.
+   - Repository permissions: **Contents** read-only, **Checks** read and write, **Metadata** read-only.
+   - Subscribe to events: **Push**, **Pull request**, **Release**.
+4. **Private key and `.env`:** under **Private keys → Generate a private key**, save the `.pem` outside the repo and never commit it. Then set in `.env`:
+   ```
+   GITHUB_APP_ID=<App ID from the app page>
+   GITHUB_APP_PRIVATE_KEY_PATH=/home/you/secrets/obsidian-code-guard.pem
+   GITHUB_WEBHOOK_SECRET=<the secret from step 3>
+   CODEGUARD_ORG_ADMIN_EMAIL=avery.lin@aster.example    # findings go to this admin's organization
+   ```
+5. **Install and restart:** install the App on the repositories to watch (the app page → **Install App**), then restart the backend.
+
+To try it: push a commit containing a fake key, for example `AWS_KEY = "AKIA..."` from gitleaks' test data. Within seconds the check fails on GitHub with an annotation on that line, and the finding shows on **Code Guard**. Publishing a release with assets checks each one against VirusTotal.
+
+A finding never contains the secret, only its SHA-256 fingerprint. A pushed key is compromised even after you delete it, so rotate it at its provider, then click **Mark rotated**. **False positive** dismisses a finding; both actions are audited.
+
 ### 8. Build and test everything
 `scripts/build.sh` is the one build entry point. It runs each component's tests, builds release artifacts, and stops at the first failure with a non-zero exit code, so CI can use it as is.
 
@@ -412,7 +440,7 @@ What each target does:
 
 | Target | Tests | Build | Needs |
 | --- | --- | --- | --- |
-| `backend` | `gradle test`: 232 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `backend` | `gradle test`: 256 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
 
@@ -518,7 +546,7 @@ The full payloads are in [`TODO.md` §6](TODO.md#6-core-api-specification).
 
 | Role | Area |
 | --- | --- |
-| Dev 1 | Backend: auth, database, Redis, WebSockets, Gmail, Code Guard (stretch) |
+| Dev 1 | Backend: auth, database, Redis, WebSockets, Gmail, Code Guard |
 | Dev 2 | Threat intel: scanner, VirusTotal, email analysis, Rust daemon |
 | Dev 3 | Mobile: Android app, biometrics, message interception |
 | Dev 4 | Frontend: login, SOC dashboard, rule editor |

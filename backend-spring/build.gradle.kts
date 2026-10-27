@@ -36,6 +36,8 @@ dependencies {
     implementation("com.webauthn4j:webauthn4j-core:0.29.7.RELEASE")
     // Argon2PasswordEncoder needs BouncyCastle.
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    // Reads the GitHub App's PEM private key (Code Guard).
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

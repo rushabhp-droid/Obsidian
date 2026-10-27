@@ -100,6 +100,30 @@ export interface GmailConnection {
   lastPolledAt: string | null;
 }
 
+/** Code Guard [P1]: GitHub pushes, pull requests and releases. */
+export type CodeTrigger = "PUSH" | "PR" | "RELEASE";
+export type CodeFindingType = "SECRET" | "VULN_DEPENDENCY" | "MALICIOUS_BINARY" | "VULN_BINARY";
+export type CodeSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type CodeFindingStatus = "OPEN" | "REVOKED" | "FALSE_POSITIVE";
+
+export interface CodeFinding {
+  id: string;
+  repoFullName: string;
+  trigger: CodeTrigger;
+  /** Commit SHA, or the release tag. */
+  gitRef: string;
+  findingType: CodeFindingType;
+  severity: CodeSeverity;
+  /** gitleaks rule, OSV / CVE id, or "VT:<detections>". */
+  ruleId: string;
+  /** path:line, package@version, or the asset filename. */
+  location: string | null;
+  /** SHA-256 of a leaked secret. The secret itself is never stored or sent. */
+  secretFingerprint: string | null;
+  status: CodeFindingStatus;
+  createdAt: string;
+}
+
 /** Server → browser messages on /ws/dashboard. */
 export type DashboardEvent =
   | {
@@ -110,7 +134,9 @@ export type DashboardEvent =
       at: string;
     }
   | { type: "SCAN"; scan: ScanLog }
-  | { type: "HEARTBEAT"; agentId: string; hostname: string; at: string };
+  | { type: "HEARTBEAT"; agentId: string; hostname: string; at: string }
+  /** Admins only. */
+  | { type: "CODE_FINDING"; finding: CodeFinding };
 
 export interface ReportRequest {
   indicatorType: IndicatorType;

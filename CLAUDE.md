@@ -6,7 +6,7 @@ Obsidian is a 24-hour hackathon project: one threat-rule engine that covers emai
 
 ## Status
 
-Built: `backend-spring/` (all P0 API, WebSocket and Gmail pieces), `daemon-rust/`, `web-dashboard/` (P0 screens, works in `live` mode), `db/`, `docs/protocol.md`, `scripts/`, `cloudflared/`. Not built: `mobile-android/` (prototype only) and every [P1] item. `README.md` "Current status" has the details and what is left.
+Built: `backend-spring/` (all P0 API, WebSocket and Gmail pieces), `daemon-rust/`, `web-dashboard/` (P0 screens, works in `live` mode), `db/`, `docs/protocol.md`, `scripts/`, `cloudflared/`. Code Guard ([P1]) is built too, ahead of the hour 8 milestone, at the user's request. Not built: `mobile-android/` (prototype only) and every other [P1] item. `README.md` "Current status" has the details and what is left.
 
 ## Scope discipline (most important rule)
 
@@ -95,7 +95,7 @@ Java packages are under `com.obsidian.{config,auth,rules,scanner,email,firewall,
 scripts/build.sh                           # test + package everything into dist/ (see --help)
 scripts/build.sh run [--prod]              # start API + dashboard + dry-run daemon; Ctrl+C stops all (logs in .run/)
 scripts/build.sh demo && scripts/build.sh run --demo   # official demo: random passwords in demo/ (gitignored), rich data
-cd backend-spring && gradle test           # 232 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
+cd backend-spring && gradle test           # 256 tests on embedded PostgreSQL 16 + in-process Redis (no Docker)
 cd backend-spring && gradle bootTestRun    # :8080 with embedded Postgres/Redis and scripts/seed.sql
 docker compose up -d                       # real Postgres + Redis (db/ mounted into initdb); scripts/reset-demo.sh reseeds
 cd backend-spring && ./gradlew bootRun     # :8080 against docker compose

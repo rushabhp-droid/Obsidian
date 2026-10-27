@@ -67,6 +67,18 @@ obsidian:
     scopes: https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify
     poll-interval: 45s
     max-messages-per-poll: 20
+  codeguard:
+    # [P1] GitHub App: on when all four are set (one App per organization).
+    app-id: ${GITHUB_APP_ID:}
+    private-key-path: ${GITHUB_APP_PRIVATE_KEY_PATH:}
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+    org-admin-email: ${CODEGUARD_ORG_ADMIN_EMAIL:}
+    api-url: https://api.github.com
+    gitleaks: gitleaks
+    osv-scanner: osv-scanner
+    tool-timeout: 120s
+    max-archive-bytes: 209715200   # 200 MiB repository snapshot
+    max-asset-bytes: 104857600     # 100 MiB per release asset (TODO.md Module 5)
   email:
     # "Verified official" needs SPF + DKIM + DMARC pass AND the sender's domain
     # (or a parent of it) on this list, or whitelisted by a rule.

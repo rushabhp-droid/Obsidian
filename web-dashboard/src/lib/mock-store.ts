@@ -5,6 +5,7 @@
 
 import type {
   BypassRequest,
+  CodeFinding,
   DashboardEvent,
   EndpointAgent,
   GmailConnection,
@@ -216,6 +217,61 @@ const emails: ScannedEmail[] = [
   },
 ];
 
+let codeFindings: CodeFinding[] = [
+  {
+    id: "f7000001-0000-4000-8000-000000000001",
+    repoFullName: "aster-research/payments-api",
+    trigger: "PUSH",
+    gitRef: "9c41e2b7d0a85f36c1e4b2a9d7f60c3e8b5a1d42",
+    findingType: "SECRET",
+    severity: "CRITICAL",
+    ruleId: "aws-access-token",
+    location: "config/settings.py:3",
+    secretFingerprint: "3f8a1c9e0b7d42f6a5e1c3b9d8f70a2e4c6b1d9f3e5a7c0b2d4f6e8a1c3b5d7f",
+    status: "OPEN",
+    createdAt: ago(9),
+  },
+  {
+    id: "f7000002-0000-4000-8000-000000000002",
+    repoFullName: "aster-research/payments-api",
+    trigger: "PR",
+    gitRef: "4be0d1f9a2c7e3b5d8f6a0c1e9b7d3f5a2c4e6b8",
+    findingType: "VULN_DEPENDENCY",
+    severity: "HIGH",
+    ruleId: "GHSA-p6mc-m468-83gw",
+    location: "lodash@4.17.15",
+    secretFingerprint: null,
+    status: "OPEN",
+    createdAt: ago(42),
+  },
+  {
+    id: "f7000003-0000-4000-8000-000000000003",
+    repoFullName: "aster-research/agent-release",
+    trigger: "RELEASE",
+    gitRef: "v2.4.0",
+    findingType: "MALICIOUS_BINARY",
+    severity: "CRITICAL",
+    ruleId: "VT:14",
+    location: "agent-linux-amd64",
+    secretFingerprint: null,
+    status: "OPEN",
+    createdAt: ago(130),
+  },
+  {
+    id: "f7000004-0000-4000-8000-000000000004",
+    repoFullName: "aster-research/web",
+    trigger: "PUSH",
+    gitRef: "e2c9a7f1b3d5c8e0a4f6b2d9c1e7a3f5b8d0c2e4",
+    findingType: "SECRET",
+    severity: "CRITICAL",
+    ruleId: "slack-webhook-url",
+    location: "scripts/notify.sh:12",
+    secretFingerprint: "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    status: "REVOKED",
+    createdAt: ago(1500),
+  },
+];
+
 let gmail: GmailConnection = {
   connected: true,
   address: "avery.lin@aster.example",
@@ -273,6 +329,12 @@ export const mockApi = {
   bypass(req: BypassRequest) {
     const expiresAt = req.ttlMinutes ? inMinutesFromNow(req.ttlMinutes) : null;
     return delay(upsert(req.indicatorType, req.indicatorValue, "WHITELIST", "SAFE", "USER_BYPASS", expiresAt));
+  },
+
+  listCodeFindings: () => delay(codeFindings),
+  setCodeFindingStatus(id: string, status: "REVOKED" | "FALSE_POSITIVE") {
+    codeFindings = codeFindings.map((f) => (f.id === id ? { ...f, status } : f));
+    return delay(codeFindings.find((f) => f.id === id)!);
   },
 
   registerAgent(hostname: string): Promise<RegisteredAgent> {

@@ -9,5 +9,5 @@ import java.util.UUID;
  */
 public record EventEnvelope(Kind kind, UUID orgId, UUID userId, JsonNode event) {
 
-    public enum Kind { RULE, SCAN, HEARTBEAT }
+    public enum Kind { RULE, SCAN, HEARTBEAT, CODE }
 }

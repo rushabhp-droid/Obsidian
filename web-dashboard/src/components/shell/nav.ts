@@ -1,6 +1,6 @@
-// Only built pages appear here. Messaging Security, Code Security, Binary
-// Analysis, Reports and Audit Log from the Figma navigation are P1 or not in
-// TODO.md; add Audit Log and Code Security when their P1 pages land.
+// Only built pages appear here. Messaging Security, Binary Analysis, Reports and
+// Audit Log from the Figma navigation are P1 or not in TODO.md; add Audit Log when
+// its P1 page lands. Code Guard is P1 and built.
 
 export interface NavItem {
   href: string;
@@ -16,6 +16,7 @@ export const navGroups: { label: string; items: NavItem[] }[] = [
       { href: "/threats", label: "Threat Monitoring" },
       { href: "/emails", label: "Email Security" },
       { href: "/agents", label: "Endpoint Security" },
+      { href: "/code", label: "Code Guard" },
     ],
   },
   {
