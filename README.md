@@ -160,7 +160,33 @@ The full directory map is in [`TODO.md` §3](TODO.md#3-monorepo-directory-struct
 
 ## Getting Started
 
-**Quick start:** `scripts/build.sh` tests and builds everything, then `cd backend-spring && gradle bootTestRun` plus `cd web-dashboard && npm run dev` runs it with no Docker. See [Build and test everything](#8-build-and-test-everything) and the steps below.
+**Quick start:** `scripts/build.sh run` starts the whole stack in one terminal, with no Docker: API, dashboard and a dry-run firewall daemon. Open http://localhost:3000 and sign in as `avery.lin@aster.example` / `obsidian-demo-2026`. Ctrl+C stops everything. `scripts/build.sh` tests and builds it all. See [Run everything with one command](#run-everything-with-one-command) and [Build and test everything](#8-build-and-test-everything).
+
+### Run everything with one command
+```sh
+scripts/build.sh run                  # dev: embedded Postgres + Redis with demo data, API :8080,
+                                      #      dashboard :3000 (next dev), daemon in --dry-run
+scripts/build.sh run --prod           # Docker Postgres + Redis, dist/obsidian-backend.jar, next start
+                                      #      (builds the jar / dashboard first if they're missing)
+scripts/build.sh run --daemon-root    # real enforcement: the daemon runs with sudo (iptables, /etc/hosts)
+scripts/build.sh run --no-daemon      # API and dashboard only
+scripts/build.sh run --agent-token f  # use an agent token you registered yourself
+```
+What it does, in order:
+1. Checks that ports 8080 and 3000 are free.
+2. Starts the backend and waits until it answers. In dev mode its data is in memory and starts fresh every run.
+3. Starts the dashboard in `live` mode and waits for it.
+4. Signs in as the demo admin and registers this machine as an agent (dev mode registers on every run; `--prod` reuses `.run/agent.token`).
+5. Starts the daemon, which syncs and heartbeats every 10 s.
+6. Streams every module's output with a `[backend]`, `[web]` or `[daemon]` prefix.
+
+Each module also logs to `.run/<module>.log`. In dry-run the daemon writes its sinkhole to `.run/hosts` instead of `/etc/hosts`. Try it: add a domain under **Rules and Policies** and watch it appear there.
+
+To stop, press Ctrl+C, or run `kill "$(cat .run/run.pid)"` from another terminal. The daemon stops first, so it removes its blocks, then the dashboard and the API. With `--prod`, Docker containers that the run started are stopped too; their data stays in the volumes.
+
+If a module crashes, the others are stopped and its log tail is printed. If Turnstile is on, or the demo seed isn't loaded, the agent can't register itself: register one on **Endpoint Security** and pass `--agent-token FILE`, or use `OBSIDIAN_ADMIN_EMAIL` / `OBSIDIAN_ADMIN_PASSWORD`. The Android app isn't built yet, so it isn't started; its prototype is `docs/prototype/android.html`.
+
+The sections below start the same pieces by hand.
 
 ### What runs where
 
@@ -301,6 +327,7 @@ scripts/build.sh backend daemon   # only the components you name: backend | daem
 scripts/build.sh --skip-tests     # build without running tests (combine with targets)
 scripts/build.sh test             # run every test suite, build nothing
 scripts/build.sh clean            # remove dist/, web-dashboard/.next, Gradle and Cargo outputs
+scripts/build.sh run [--prod]     # start every module (see "Run everything with one command" above)
 scripts/build.sh --help
 ```
 
@@ -353,7 +380,8 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | Sign-in loops back to `/login` | Spring isn't running on `SPRING_ORIGIN` (default `http://localhost:8080`) |
 | Every scan is `PENDING` | No `VT_API_KEY`, the 4/min quota is used up, or VirusTotal is still analysing; run `scripts/prewarm-vt.sh` |
 | Daemon logs `refused the agent token (401)` | Register the agent again and replace the token file |
-| `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'` |
+| `Port 8080/3000 already in use` | Stop the old process: `ss -ltnp \| grep -E ':(8080\|3000)'`; a previous `build.sh run` stops with `kill "$(cat .run/run.pid)"` |
+| `build.sh run`: "couldn't sign in as … to register the daemon" | Turnstile is on or the seed isn't loaded: register an agent in the dashboard and pass `--agent-token FILE` |
 
 ---
 

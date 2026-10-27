@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# Builds, tests and packages every component into dist/.
+# Builds, tests, packages and runs every component.
 #
+# Build
 #   scripts/build.sh                  all components, with tests
 #   scripts/build.sh backend daemon   only these (backend | daemon | web)
 #   scripts/build.sh --skip-tests     package without running tests
 #   scripts/build.sh test             run every test suite, build nothing
 #   scripts/build.sh clean            remove dist/ and build outputs
 #
+# Run (foreground; Ctrl+C stops everything, the daemon first so it removes its blocks)
+#   scripts/build.sh run              dev: embedded Postgres + Redis with demo data (no Docker),
+#                                     API :8080, dashboard :3000 (next dev), daemon in --dry-run
+#   scripts/build.sh run --prod       Docker Postgres + Redis, dist/obsidian-backend.jar, next start
+#                                     (builds whatever is missing first)
+#     --no-daemon                     don't start the firewall daemon
+#     --daemon-root                   real enforcement: run the daemon with sudo (iptables, /etc/hosts)
+#     --agent-token FILE              use this agent token instead of registering one with the demo admin
+#   Logs: .run/<module>.log (also streamed to the terminal with a [module] prefix).
+#   From another terminal: kill "$(cat .run/run.pid)" stops a run the same way as Ctrl+C.
+#
 # Outputs:
-#   dist/obsidian-backend.jar   java -jar dist/obsidian-backend.jar   (reads ../.env or env vars)
+#   dist/obsidian-backend.jar   java -jar dist/obsidian-backend.jar   (reads .env or env vars)
 #   dist/daemon-rust            sudo dist/daemon-rust --token-file /etc/obsidian/agent.token
 #   web-dashboard/.next         cd web-dashboard && npm start          (production server on :3000)
 #
@@ -17,20 +29,32 @@
 #   GRADLE                gradle command to use; otherwise ./gradlew, or a system gradle 9 if the wrapper
 #                         distribution can't be downloaded
 #   NEXT_PUBLIC_API_MODE  baked into the web build; defaults to "live"
+#   OBSIDIAN_ADMIN_EMAIL / OBSIDIAN_ADMIN_PASSWORD
+#                         account `run` uses to register the daemon (default: the seeded demo admin)
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DIST="$ROOT/dist"
+RUN="$ROOT/.run"
 SKIP_TESTS=0
 TARGETS=()
+PROD=0
+WITH_DAEMON=1
+DAEMON_ROOT=0
+AGENT_TOKEN=""
 
-for arg in "$@"; do
-  case "$arg" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --skip-tests) SKIP_TESTS=1 ;;
-    backend | daemon | web | test | clean) TARGETS+=("$arg") ;;
-    -h | --help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown argument: $arg (try --help)" >&2; exit 2 ;;
+    --prod) PROD=1 ;;
+    --no-daemon) WITH_DAEMON=0 ;;
+    --daemon-root) DAEMON_ROOT=1 ;;
+    --agent-token) [ $# -ge 2 ] || { echo "--agent-token needs a file" >&2; exit 2; }; AGENT_TOKEN=$(realpath "$2"); shift ;;
+    backend | daemon | web | test | clean | run) TARGETS+=("$1") ;;
+    -h | --help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
+  shift
 done
 [ ${#TARGETS[@]} -gt 0 ] || TARGETS=(backend daemon web)
 
@@ -134,7 +158,188 @@ clean() {
   (cd "$ROOT/backend-spring" && $GRADLE clean --console=plain -q) || true
 }
 
+# ---- run ------------------------------------------------------------------------
+
+declare -A PIDS=()
+ORDER=()
+STARTED_COMPOSE=0
+
+# start NAME DIR COMMAND... : background process with its own log, tracked for shutdown.
+start() {
+  local name=$1 dir=$2; shift 2
+  (cd "$dir" && exec "$@") > "$RUN/$name.log" 2>&1 < /dev/null &
+  PIDS[$name]=$!
+  ORDER+=("$name")
+}
+
+kill_tree() {
+  local pid=$1 signal=${2:-TERM} child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child" "$signal"; done
+  kill "-$signal" "$pid" 2>/dev/null || true
+}
+
+stop_one() {
+  local name=$1 pid=${PIDS[$1]:-}
+  [ -n "$pid" ] || return 0
+  if [ "$name" = daemon ] && [ "$DAEMON_ROOT" = 1 ]; then
+    sudo pkill -TERM -f "$ROOT/daemon-rust/target/release/daemon-rust" 2>/dev/null || true
+  else
+    kill_tree "$pid" TERM
+  fi
+  for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  kill -0 "$pid" 2>/dev/null && kill_tree "$pid" KILL
+  unset "PIDS[$name]"
+}
+
+port_owner_is_ours() { # PORT PATTERN: our process still listening (Gradle can detach the app JVM)
+  local pid
+  pid=$(ss -ltnpH "sport = :$1" 2>/dev/null | grep -oE 'pid=[0-9]+' | head -1 | cut -d= -f2)
+  [ -n "$pid" ] && ps -o args= -p "$pid" 2>/dev/null | grep -q -- "$2" && echo "$pid"
+}
+
+stop_all() {
+  trap - EXIT INT TERM
+  [ -n "${TAIL_PID:-}" ] && kill "$TAIL_PID" 2>/dev/null || true
+  step "stopping"
+  local i
+  for (( i = ${#ORDER[@]} - 1; i >= 0; i-- )); do stop_one "${ORDER[$i]}"; done
+  local leftover
+  leftover=$(port_owner_is_ours 8080 'com.obsidian' || true); [ -n "$leftover" ] && kill "$leftover" 2>/dev/null || true
+  leftover=$(port_owner_is_ours 3000 'next' || true); [ -n "$leftover" ] && kill "$leftover" 2>/dev/null || true
+  if [ "$STARTED_COMPOSE" = 1 ]; then (cd "$ROOT" && docker compose stop >/dev/null 2>&1) || true; fi
+  rm -f "$RUN/run.pid"
+  echo "stopped; logs are in .run/"
+}
+
+on_signal() {
+  stop_all
+  exit 130
+}
+
+# wait_for NAME URL SECONDS: until the URL answers, or fail if the process died.
+wait_for() {
+  local name=$1 url=$2 limit=$3 code
+  for _ in $(seq 1 "$limit"); do
+    code=$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$url" || true)
+    [ "$code" != 000 ] && return 0
+    if ! kill -0 "${PIDS[$name]}" 2>/dev/null; then
+      tail -n 30 "$RUN/$name.log" >&2
+      fail "$name exited during startup (log: .run/$name.log)"
+    fi
+    sleep 1
+  done
+  tail -n 30 "$RUN/$name.log" >&2
+  fail "$name didn't answer on $url within ${limit}s (log: .run/$name.log)"
+}
+
+port_free() {
+  ! ss -ltnH "sport = :$1" 2>/dev/null | grep -q . || fail "port $1 is already in use; stop whatever runs there first"
+}
+
+# Registers this machine as an agent with the demo admin and writes the token file.
+register_agent() {
+  local token_file=$1 jar="$RUN/cookies.txt" xsrf host
+  local email=${OBSIDIAN_ADMIN_EMAIL:-avery.lin@aster.example} password=${OBSIDIAN_ADMIN_PASSWORD:-obsidian-demo-2026}
+  rm -f "$jar"
+  curl -sf -c "$jar" -o /dev/null -H 'Content-Type: application/json' \
+      -d "{\"email\":\"$email\",\"password\":\"$password\"}" http://localhost:8080/api/v1/auth/login \
+    || fail "couldn't sign in as $email to register the daemon (Turnstile on, or no seed?); register it in the dashboard and pass --agent-token FILE"
+  xsrf=$(awk '$6 == "XSRF-TOKEN" { print $7 }' "$jar")
+  host=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.\n-' '-')
+  curl -sf -b "$jar" -H "X-XSRF-TOKEN: $xsrf" -H 'Content-Type: application/json' \
+      -d "{\"hostname\":\"${host:-localhost}\"}" http://localhost:8080/api/v1/agents \
+    | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["token"])' > "$token_file" \
+    || fail "registering the daemon failed; register it in the dashboard and pass --agent-token FILE"
+  chmod 600 "$token_file"
+  rm -f "$jar"
+}
+
+run_all() {
+  need curl "used to check the services"
+  need npm "install Node.js 20 or newer"
+  mkdir -p "$RUN"
+  rm -f "$RUN"/*.log
+  port_free 8080
+  port_free 3000
+  trap stop_all EXIT
+  trap on_signal INT TERM
+  echo $$ > "$RUN/run.pid"   # kill "$(cat .run/run.pid)" stops a run from another terminal
+  pick_java; pick_gradle
+
+  if [ "$PROD" = 1 ]; then
+    need docker "option --prod runs Postgres and Redis in Docker"
+    if ! (cd "$ROOT" && docker compose ps --status running --services 2>/dev/null | grep -q postgres); then
+      STARTED_COMPOSE=1
+    fi
+    step "postgres + redis (docker compose)"
+    (cd "$ROOT" && docker compose up -d --wait)
+    (cd "$ROOT" && docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 \
+        -U "${POSTGRES_USER:-obsidian}" -d "${POSTGRES_DB:-obsidian}" < scripts/seed.sql) >/dev/null
+    [ -f "$DIST/obsidian-backend.jar" ] || { SKIP_TESTS=1; build_backend; }
+    [ -f "$ROOT/web-dashboard/.next/BUILD_ID" ] || { SKIP_TESTS=1; build_web; }
+    step "starting backend (dist/obsidian-backend.jar)"
+    start backend "$ROOT" "$JAVA_HOME/bin/java" -jar "$DIST/obsidian-backend.jar"
+  else
+    step "starting backend (gradle bootTestRun: embedded Postgres + Redis, demo seed)"
+    start backend "$ROOT/backend-spring" $GRADLE bootTestRun --console=plain -q
+  fi
+  wait_for backend http://localhost:8080/api/v1/auth/me 240
+
+  web_install
+  if [ "$PROD" = 1 ]; then
+    step "starting dashboard (next start)"
+    start web "$ROOT/web-dashboard" npm start
+  else
+    step "starting dashboard (next dev, live API)"
+    start web "$ROOT/web-dashboard" env NEXT_PUBLIC_API_MODE=live npm run dev
+  fi
+  wait_for web http://localhost:3000/login 120
+
+  if [ "$WITH_DAEMON" = 1 ]; then
+    need cargo "install a Rust stable toolchain, or pass --no-daemon"
+    [ -x "$ROOT/daemon-rust/target/release/daemon-rust" ] || (cd "$ROOT/daemon-rust" && cargo build --release --quiet)
+    local token_file=${AGENT_TOKEN:-$RUN/agent.token}
+    if [ -z "$AGENT_TOKEN" ] && { [ "$PROD" = 0 ] || [ ! -s "$token_file" ]; }; then
+      register_agent "$token_file"   # dev data is fresh every run, so always register there
+    fi
+    if [ "$DAEMON_ROOT" = 1 ]; then
+      step "starting daemon (sudo: real iptables + /etc/hosts)"
+      sudo -v || fail "sudo is needed for --daemon-root"
+      start daemon "$ROOT" sudo "$ROOT/daemon-rust/target/release/daemon-rust" --token-file "$token_file"
+    else
+      step "starting daemon (--dry-run: prints iptables commands, hosts file .run/hosts)"
+      [ -f "$RUN/hosts" ] || printf '127.0.0.1 localhost\n' > "$RUN/hosts"
+      start daemon "$ROOT" "$ROOT/daemon-rust/target/release/daemon-rust" --dry-run \
+          --token-file "$token_file" --hosts-file "$RUN/hosts"
+    fi
+    sleep 2
+    kill -0 "${PIDS[daemon]}" 2>/dev/null || { tail -n 20 "$RUN/daemon.log" >&2; fail "daemon exited (log: .run/daemon.log)"; }
+  fi
+
+  step "running — open http://localhost:3000 (sign in as avery.lin@aster.example / obsidian-demo-2026). Ctrl+C stops everything."
+  echo "the Android app isn't built yet; its prototype is docs/prototype/android.html"
+  tail -n +1 -F "$RUN"/*.log 2>/dev/null | awk '
+      /^==> .* <==$/ { name = $2; sub(/.*\//, "", name); sub(/\.log$/, "", name); next }
+      /^tail: / || /^[[:space:]]*$/ { next }
+      { printf "[%s] %s\n", name, $0; fflush() }' &
+  TAIL_PID=$!
+  # Exit (and clean up) as soon as any module stops on its own.
+  while :; do
+    for name in "${ORDER[@]}"; do
+      if ! kill -0 "${PIDS[$name]}" 2>/dev/null; then
+        echo "$name stopped on its own (log: .run/$name.log)" >&2
+        exit 1
+      fi
+    done
+    sleep 2
+  done
+}
+
 started=$(date +%s)
+if [[ " ${TARGETS[*]} " == *" run "* ]]; then
+  [ ${#TARGETS[@]} -eq 1 ] || fail "run can't be combined with other targets"
+  run_all
+fi
 for target in "${TARGETS[@]}"; do
   case "$target" in
     backend) build_backend ;;
