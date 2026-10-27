@@ -63,3 +63,8 @@ tasks.withType<Test>().configureEach {
     // Mockito attaches its agent at runtime.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
 }
+
+// `gradle bootTestRun`: the backend on :8080 with embedded Postgres + Redis (no Docker).
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootTestRun") {
+    mainClass.set("com.obsidian.DevServer")
+}

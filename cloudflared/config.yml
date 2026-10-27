@@ -1,0 +1,15 @@
+# Named tunnel (never a quick tunnel: passkeys and Turnstile are bound to the hostname).
+#   cloudflared tunnel create obsidian
+#   cloudflared tunnel route dns obsidian obsidian.<your-domain>
+#   cloudflared tunnel --config cloudflared/config.yml run obsidian
+# The credentials JSON stays out of git (.gitignore).
+tunnel: obsidian
+credentials-file: cloudflared/obsidian.json
+
+ingress:
+  - hostname: obsidian.<your-domain>
+    path: ^/(api|ws|webauthn|login/webauthn|oauth2|login/oauth2)(/|$)
+    service: http://localhost:8080
+  - hostname: obsidian.<your-domain>
+    service: http://localhost:3000
+  - service: http_status:404
