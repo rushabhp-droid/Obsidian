@@ -207,6 +207,7 @@ and attachment scanning.
 | --- | --- | --- |
 | `POST /api/v1/agents` | `{"hostname":"build-linux-01"}` (admins) | `201` `RegisteredAgent`: the token is shown once, the server keeps its SHA-256 |
 | `GET /api/v1/agents` | | `EndpointAgent[]` for your organization (`[]` for consumers) |
+| `GET /api/v1/agents/{id}` | (admins) | `AgentDetail` `{"agent": EndpointAgent, "enforced": [{"ruleId","indicatorType","value"}]}`: the block set the daemon gets on SYNC. `404` for another organization's agent |
 
 ```json
 { "id": "a9000001-…", "hostname": "build-linux-01", "lastHeartbeatAt": null, "createdAt": "2026-10-27T10:15:00Z",
@@ -214,6 +215,25 @@ and attachment scanning.
 ```
 
 An agent is online when its last heartbeat is under 30 s old.
+
+## Organization, audit log and reports (dashboard)
+
+Organization admins only (`403` for everyone else) unless noted. Every change is written to `audit_logs`
+in the same transaction.
+
+| Endpoint | Body → response |
+| --- | --- |
+| `GET /api/v1/org` | → `OrgSettings` `{"id","name","policyAllowUserBypass","memberCount","adminCount","createdAt"}` |
+| `PUT /api/v1/org` | `{"name"?, "policyAllowUserBypass"?}` → `OrgSettings`; audited as `ORG_UPDATE` with previous and new values |
+| `GET /api/v1/org/members` | → `Member[]` `{"id","email","displayName","role","passkeys","gmailConnected","you","createdAt"}`, oldest first |
+| `POST /api/v1/org/members` | `{"email","displayName","role":"EMPLOYEE\|ADMIN","temporaryPassword"}` (password 12–128) → `201 Member`; `409` if the email has an account. There is no invitation email: the admin hands the password over. Audited as `MEMBER_ADD` |
+| `PUT /api/v1/org/members/{id}/role` | `{"role":"EMPLOYEE\|ADMIN"}` → `Member`; `409` when it would leave no admin. Applies on the member's next request. `MEMBER_ROLE` |
+| `DELETE /api/v1/org/members/{id}` | → `204`; `409` for yourself or the last admin. Deletes the account, its passkeys and personal rules; its sessions and tokens stop working. `MEMBER_REMOVE` |
+| `GET /api/v1/audit?limit=200` | → `AuditEntry[]` newest first (max 500): the organization's records plus global `CONSUMER_REPORT` promotions. `AuditEntry` is `{"id","action","actor":{"id","email","displayName"}\|null,"orgId","ruleId","details":{…},"createdAt"}`; `actor` is null for automatic changes and removed accounts |
+| `GET /api/v1/audit/{id}` | → `AuditDetail` `{"entry","rule":ThreatRule\|null,"ruleHistory":AuditEntry[]}`; `404` outside your organization |
+| `GET /api/v1/reports/summary?days=7` | Everyone signed in. → `ReportSummary` `{"days","from","to","scope":"ORGANIZATION\|USER","totals","byDay":[{"date","counts"}],"bySource":[{"channel","counts"}],"rules":{"blacklist","whitelist","organization","global","personal"}}`. `counts` is `{"total","malicious","suspicious","pending","clean","bypassed"}`. Admins get their organization's members' scans, everyone else their own; days 1–90, UTC |
+
+Audit records are append-only: there is no endpoint that edits or deletes them.
 
 ## WebSocket `/ws/firewall` (daemon)
 

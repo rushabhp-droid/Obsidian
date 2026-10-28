@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardView } from "./dashboard-view";
+import { OverviewSwitch } from "./overview-switch";
 
 export const metadata: Metadata = { title: "Overview" };
 
 export default function DashboardPage() {
-  return <DashboardView />;
+  return <OverviewSwitch />;
 }

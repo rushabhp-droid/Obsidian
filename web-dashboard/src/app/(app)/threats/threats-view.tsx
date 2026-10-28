@@ -61,7 +61,13 @@ function ruleFor(scan: ScanLog, rules: ThreatRule[]) {
   return rules.find((r) => checked.includes(r.indicatorValue) || sender === r.indicatorValue);
 }
 
-export function ThreatsView() {
+const MESSAGING: Channel[] = ["SMS", "WHATSAPP"];
+
+/**
+ * The scan feed. "messaging" is the Messaging Security page: SMS and WhatsApp
+ * only. Employees see their own scans (the API scopes them), so the wording says "your".
+ */
+export function ThreatsView({ variant = "all" }: { variant?: "all" | "messaging" }) {
   const scans = useLiveScans();
   const rules = useLiveRules();
   const { session, socketConnected } = useLive();
@@ -89,8 +95,15 @@ export function ThreatsView() {
   // Clean scans aren't threat events; the feed lists everything else.
   const inWindow = useMemo(() => {
     const since = time === "all" ? 0 : now - (time === "day" ? 1 : 7) * 86_400_000;
-    return (scans.data ?? []).filter((s) => s.verdict !== "CLEAN" && new Date(s.createdAt).getTime() >= since);
-  }, [scans.data, time, now]);
+    return (scans.data ?? []).filter(
+      (s) =>
+        s.verdict !== "CLEAN" &&
+        new Date(s.createdAt).getTime() >= since &&
+        (variant === "all" || MESSAGING.includes(s.channel)),
+    );
+  }, [scans.data, time, now, variant]);
+  const channels = variant === "messaging" ? MESSAGING : (Object.keys(channelLabel) as Channel[]);
+  const own = session?.role !== "ADMIN";
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -116,8 +129,16 @@ export function ThreatsView() {
   return (
     <>
       <PageHeading
-        title="Threat monitoring"
-        subtitle={`Unified feed across email, SMS, WhatsApp and network · ${plural(inWindow.length, "event")} · ${
+        title={variant === "messaging" ? "Messaging security" : own ? "My threat events" : "Threat monitoring"}
+        subtitle={`${
+          variant === "messaging"
+            ? own
+              ? "SMS and WhatsApp messages scanned on your phone"
+              : "SMS and WhatsApp scans from enrolled phones"
+            : own
+              ? "Email, SMS and WhatsApp scans for your account"
+              : "Unified feed across email, SMS, WhatsApp and network"
+        } · ${plural(inWindow.length, "event")} · ${
           time === "day" ? "last 24 hours" : time === "week" ? "last 7 days" : "all time"
         }`}
         actions={
@@ -169,7 +190,7 @@ export function ThreatsView() {
           </SelectTrigger>
           <SelectContent align="end">
             <SelectItem value="all">Source</SelectItem>
-            {(Object.keys(channelLabel) as Channel[]).map((c) => (
+            {channels.map((c) => (
               <SelectItem key={c} value={c}>
                 {channelLabel[c]}
               </SelectItem>

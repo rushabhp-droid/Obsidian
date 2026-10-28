@@ -13,6 +13,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByEmail(String email);
 
+    List<User> findByOrgIdOrderByCreatedAtAsc(UUID orgId);
+
+    long countByOrgIdAndRole(UUID orgId, Role role);
+
     @Query(value = "select id from users where gmail_refresh_token_enc is not null", nativeQuery = true)
     List<UUID> findIdsWithGmailConnected();
 }

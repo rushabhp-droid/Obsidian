@@ -34,6 +34,7 @@ public class Organization {
 
     public UUID getId() { return id; }
     public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
     public boolean isPolicyAllowUserBypass() { return policyAllowUserBypass; }
     public void setPolicyAllowUserBypass(boolean allow) { this.policyAllowUserBypass = allow; }
     public Instant getCreatedAt() { return createdAt; }

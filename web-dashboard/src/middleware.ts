@@ -21,6 +21,9 @@ export const config = {
     "/code/:path*",
     "/firewall/:path*",
     "/consumer-reports/:path*",
+    "/messaging/:path*",
+    "/reports/:path*",
+    "/audit/:path*",
     "/settings/:path*",
   ],
 };

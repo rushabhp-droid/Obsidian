@@ -8,12 +8,14 @@ import { ErrorNotice, LoadingRows, TablePanel, UnavailableNote } from "@/compone
 import { VerdictText } from "@/components/obsidian/verdict";
 import { useLive, useNow } from "@/components/shell/live-provider";
 import { useLiveRules, useLiveScans } from "@/hooks/use-live-data";
-import { API_MODE } from "@/lib/api";
+import { useResource } from "@/hooks/use-resource";
+import { api, API_MODE } from "@/lib/api";
 import { channelLabel, dateLongUtc, hostOf, isOnline, plural, relativeTime, ruleSourceLabel, shortId, timeUtc } from "@/lib/format";
 import type { ScanLog, ThreatRule } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const WINDOW_HOURS = 24;
+const loadQueue = () => api.listConsumerReports();
 const BUCKETS = 12;
 
 type Status = "ready" | "loading" | "error";
@@ -22,6 +24,8 @@ export function DashboardView() {
   const scans = useLiveScans();
   const rules = useLiveRules();
   const { session, agents, agentsError } = useLive();
+  const queue = useResource(loadQueue);
+  const decisions = queue.data?.length;
   const now = useNow(10_000);
   const org = session?.organization?.name ?? session?.displayName;
 
@@ -30,7 +34,6 @@ export function DashboardView() {
   const recent = (scans.data ?? []).filter((s) => new Date(s.createdAt).getTime() >= windowStart);
   const flagged = recent.filter((s) => s.verdict !== "CLEAN");
   const malicious = flagged.filter((s) => s.verdict === "MALICIOUS");
-  const pending = flagged.filter((s) => s.verdict === "PENDING");
   const blocks = (rules.data ?? []).filter((r) => r.listType === "BLACKLIST");
   const onlineAgents = (agents ?? []).filter((a) => isOnline(a.lastHeartbeatAt, now));
   const ready = scans.data !== undefined && rules.data !== undefined;
@@ -63,7 +66,12 @@ export function DashboardView() {
             value={blocks.length}
             caption={`Enforced by ${plural(onlineAgents.length, "connected agent")}`}
           />
-          <MetricCard label="Pending verdicts" value={pending.length} caption="Waiting on VirusTotal, never clean" />
+          <MetricCard
+            label="Pending admin decisions"
+            value={decisions === undefined ? "–" : decisions}
+            tone={decisions ? "warning" : "neutral"}
+            caption={decisions === undefined ? "Consumer reports unavailable" : "Consumer reports waiting for an admin"}
+          />
         </div>
       ) : (
         <Panel className="p-0">
@@ -158,6 +166,12 @@ export function DashboardView() {
           </Link>
           <Link href="/agents" className="w-fit text-[12px] leading-[1.4] text-interactive hover:underline">
             Endpoint Security → Register an agent
+          </Link>
+          <Link href="/consumer-reports" className="w-fit text-[12px] leading-[1.4] text-interactive hover:underline">
+            Consumer Reports → Review pending decisions
+          </Link>
+          <Link href="/audit" className="w-fit text-[12px] leading-[1.4] text-interactive hover:underline">
+            Audit Log → Who changed what
           </Link>
         </Panel>
       </div>

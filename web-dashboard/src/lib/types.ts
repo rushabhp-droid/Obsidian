@@ -142,6 +142,130 @@ export interface ConsumerReportQueueItem {
   lastReportedAt: string;
 }
 
+/** Settings → Organization (GET/PUT /api/v1/org). Admins only. */
+export interface OrgSettings {
+  id: string;
+  name: string;
+  policyAllowUserBypass: boolean;
+  memberCount: number;
+  adminCount: number;
+  createdAt: string;
+}
+
+/** Settings → Users & roles (GET /api/v1/org/members). */
+export interface Member {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Exclude<Role, "CONSUMER">;
+  passkeys: number;
+  gmailConnected: boolean;
+  /** The signed-in admin's own row. */
+  you: boolean;
+  createdAt: string;
+}
+
+export interface AddMemberRequest {
+  email: string;
+  displayName: string;
+  role: Exclude<Role, "CONSUMER">;
+  /** At least 12 characters; the admin hands it to the member. */
+  temporaryPassword: string;
+}
+
+export type AuditAction =
+  | "REPORT"
+  | "BYPASS"
+  | "BYPASS_EXPIRED"
+  | "RULE_EDIT"
+  | "AGENT_REGISTER"
+  | "CODE_FINDING_STATUS"
+  | "CONSUMER_REPORT"
+  | "MEMBER_ADD"
+  | "MEMBER_ROLE"
+  | "MEMBER_REMOVE"
+  | "ORG_UPDATE";
+
+export interface AuditActor {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+/** GET /api/v1/audit: newest first, read-only. */
+export interface AuditEntry {
+  id: string;
+  action: AuditAction;
+  /** null for automatic changes (VirusTotal, reporter thresholds) and removed accounts. */
+  actor: AuditActor | null;
+  orgId: string | null;
+  ruleId: string | null;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** GET /api/v1/audit/{id}: the record, the rule as it is now, and the rule's history. */
+export interface AuditDetail {
+  entry: AuditEntry;
+  rule: ThreatRule | null;
+  ruleHistory: AuditEntry[];
+}
+
+export interface ReportCounts {
+  total: number;
+  malicious: number;
+  suspicious: number;
+  pending: number;
+  clean: number;
+  bypassed: number;
+}
+
+export interface ReportDay {
+  /** UTC date, YYYY-MM-DD. */
+  date: string;
+  counts: ReportCounts;
+}
+
+export interface ReportSource {
+  channel: Channel | "CODE";
+  counts: ReportCounts;
+}
+
+/** Rules in force now that the caller can see. */
+export interface ReportRuleCounts {
+  blacklist: number;
+  whitelist: number;
+  organization: number;
+  global: number;
+  personal: number;
+}
+
+/** GET /api/v1/reports/summary?days=N: scan verdicts per UTC day and source. */
+export interface ReportSummary {
+  days: number;
+  from: string;
+  to: string;
+  /** ORGANIZATION for admins, USER for everyone else. */
+  scope: "ORGANIZATION" | "USER";
+  totals: ReportCounts;
+  byDay: ReportDay[];
+  bySource: ReportSource[];
+  rules: ReportRuleCounts;
+}
+
+/** One entry of a daemon's SYNC. */
+export interface EnforcedRule {
+  ruleId: string;
+  indicatorType: IndicatorType;
+  value: string;
+}
+
+/** GET /api/v1/agents/{id}: the daemon and the block set it enforces. */
+export interface AgentDetail {
+  agent: EndpointAgent;
+  enforced: EnforcedRule[];
+}
+
 /** Server → browser messages on /ws/dashboard. */
 export type DashboardEvent =
   | {

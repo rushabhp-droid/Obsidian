@@ -32,7 +32,7 @@ export function ContextHeader() {
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-line bg-surface px-8">
       <p className="text-[12px] leading-[1.4] whitespace-pre text-subtle">
         {workspace ? `${workspace}  /  ` : ""}
-        {sectionLabel(pathname)}
+        {sectionLabel(pathname, session?.role)}
       </p>
       <AgentStatus />
       <SearchRules />

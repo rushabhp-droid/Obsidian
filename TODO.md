@@ -56,7 +56,7 @@ Begin only after the hour-8 milestone passes.
 - [ ] Heuristic classifier for messages without links or attachments.
 - [ ] SIM change detection: review the existing code and turn it back on (it is not wired into the app). `SimFingerprintTest` tests a copy of the logic inside the test file; make it exercise `SimChangeMonitor`.
 - [ ] `BypassExpiryJob` to reapply a block when a bypass expires.
-- [ ] TTL picker and audit log view in the dashboard.
+- [ ] TTL picker in the dashboard. (The audit log view was built on 2026-10-28 at the user's request, with the Figma dashboard redesign; like Code Guard, it is an existing exception.)
 - [ ] Daemon ACK latency in the dashboard.
 
 ## Backlog maintenance

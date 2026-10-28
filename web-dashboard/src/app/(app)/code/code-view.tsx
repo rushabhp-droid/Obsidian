@@ -86,8 +86,8 @@ export function CodeView() {
   return (
     <>
       <PageHeading
-        title="Code Guard"
-        subtitle="GitHub pushes, pull requests and releases · leaked secrets, vulnerable dependencies, malicious binaries"
+        title="Code security"
+        subtitle="Code Guard · GitHub pushes, pull requests and releases · leaked secrets, vulnerable dependencies, malicious binaries"
       />
 
       {forbidden ? (
@@ -248,10 +248,59 @@ export function CodeView() {
         </>
       )}
 
+      {!forbidden && findings.data && list.length > 0 ? <RepositoryInventory findings={list} now={now} /> : null}
+
       <PageFootnote>
         {API_MODE === "mock" ? "Sample records" : "Live records"} · {dateLongUtc(new Date(now))} · UTC · Obsidian
         {session?.organization ? ` / ${session.organization.name}` : ""}
       </PageFootnote>
     </>
+  );
+}
+
+/** Repositories seen by Code Guard, from their findings: what's open and how bad. */
+function RepositoryInventory({ findings, now }: { findings: CodeFinding[]; now: number }) {
+  const repos = [...new Set(findings.map((f) => f.repoFullName))].map((repo) => {
+    const mine = findings.filter((f) => f.repoFullName === repo);
+    const open = mine.filter((f) => f.status === "OPEN");
+    const latest = mine.map((f) => f.createdAt).sort().at(-1) ?? null;
+    return {
+      repo,
+      open: open.length,
+      severe: open.filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH").length,
+      secrets: open.filter((f) => f.findingType === "SECRET").length,
+      resolved: mine.length - open.length,
+      latest,
+    };
+  });
+  repos.sort((a, b) => b.severe - a.severe || b.open - a.open || a.repo.localeCompare(b.repo));
+
+  return (
+    <TablePanel title="Repository inventory" meta={plural(repos.length, "repository", "repositories")} footer="Repositories appear once Code Guard has reported on them.">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Repository</TableHead>
+            <TableHead>Open findings</TableHead>
+            <TableHead>Critical / high</TableHead>
+            <TableHead>Secrets to rotate</TableHead>
+            <TableHead>Resolved</TableHead>
+            <TableHead>Latest finding</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {repos.map((r) => (
+            <TableRow key={r.repo}>
+              <TableCell className="text-ink">{r.repo}</TableCell>
+              <TableCell>{r.open}</TableCell>
+              <TableCell className={r.severe > 0 ? "text-critical" : undefined}>{r.severe}</TableCell>
+              <TableCell className={r.secrets > 0 ? "text-warning" : undefined}>{r.secrets}</TableCell>
+              <TableCell>{r.resolved}</TableCell>
+              <TableCell>{relativeTime(r.latest, now)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TablePanel>
   );
 }

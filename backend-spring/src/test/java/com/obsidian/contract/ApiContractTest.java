@@ -3,6 +3,7 @@ package com.obsidian.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -181,6 +182,49 @@ class ApiContractTest extends IntegrationTest {
         JsonNode queue = json(get("/api/v1/consumer-reports"));
         assertThat(keys(queue.get(0))).isEqualTo(types.fields("ConsumerReportQueueItem"));
         assertThat(types.union("ConsumerReportStatus")).isEqualTo(names(ConsumerReport.Status.values()));
+    }
+
+    @Test
+    void organizationMembersAuditReportsAndAgentDetailMatch() throws Exception {
+        JsonNode settings = json(put("/api/v1/org").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"policyAllowUserBypass\":false}"));
+        assertThat(keys(settings)).isEqualTo(types.fields("OrgSettings"));
+
+        JsonNode member = json(post("/api/v1/org/members").contentType(MediaType.APPLICATION_JSON).content("""
+                {"email":"contract-%s@aster.example","displayName":"Contract","role":"EMPLOYEE","temporaryPassword":"a temporary password"}"""
+                .formatted(java.util.UUID.randomUUID().toString().substring(0, 8))));
+        assertThat(keys(member)).isEqualTo(types.fields("Member"));
+        assertThat(keys(json(get("/api/v1/org/members")).get(0))).isEqualTo(types.fields("Member"));
+        assertThat(types.fields("AddMemberRequest")).containsExactlyInAnyOrder("email", "displayName", "role", "temporaryPassword");
+
+        json(post("/api/v1/rules/report").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"indicatorType\":\"DOMAIN\",\"indicatorValue\":\"contract-audit.example\"}"));
+        JsonNode audit = json(get("/api/v1/audit"));
+        JsonNode withActor = null;
+        for (JsonNode entry : audit) {
+            if (!entry.get("actor").isNull() && !entry.get("ruleId").isNull()) {
+                withActor = entry;
+                break;
+            }
+        }
+        assertThat(keys(withActor)).isEqualTo(types.fields("AuditEntry"));
+        assertThat(keys(withActor.get("actor"))).isEqualTo(types.fields("AuditActor"));
+        assertThat(types.union("AuditAction")).isEqualTo(names(com.obsidian.model.AuditAction.values()));
+        JsonNode detail = json(get("/api/v1/audit/" + withActor.get("id").asText()));
+        assertThat(keys(detail)).isEqualTo(types.fields("AuditDetail"));
+        assertThat(keys(detail.get("rule"))).isEqualTo(types.fields("ThreatRule"));
+
+        JsonNode summary = json(get("/api/v1/reports/summary?days=2"));
+        assertThat(keys(summary)).isEqualTo(types.fields("ReportSummary"));
+        assertThat(keys(summary.get("totals"))).isEqualTo(types.fields("ReportCounts"));
+        assertThat(keys(summary.get("rules"))).isEqualTo(types.fields("ReportRuleCounts"));
+        assertThat(keys(summary.get("byDay").get(0))).isEqualTo(types.fields("ReportDay"));
+
+        JsonNode registered = json(post("/api/v1/agents").contentType(MediaType.APPLICATION_JSON).content("{\"hostname\":\"contract-host\"}"));
+        JsonNode agentDetail = json(get("/api/v1/agents/" + registered.get("id").asText()));
+        assertThat(keys(agentDetail)).isEqualTo(types.fields("AgentDetail"));
+        assertThat(keys(agentDetail.get("agent"))).isEqualTo(types.fields("EndpointAgent"));
+        assertThat(keys(agentDetail.get("enforced").get(0))).isEqualTo(types.fields("EnforcedRule"));
     }
 
     @Test

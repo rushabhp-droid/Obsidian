@@ -19,12 +19,12 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `backend-spring/` Gmail | Done: OAuth connect (encrypted refresh token), polling worker, `GET /emails`, `/integrations/gmail`. Not yet tried against a real Google account. |
 | `backend-spring/` WebSockets + agents | Done: `/ws/firewall` (bearer handshake, SYNC, BLOCK/BYPASS, HEARTBEAT), `/ws/dashboard`, Redis fan-out, `POST/GET /agents`. |
 | `daemon-rust/` | Done: SYNC reconcile, BLOCK/BYPASS, 10 s heartbeat, reconnect, cleanup on SIGINT/SIGTERM, `--dry-run`. Verified end to end in dry-run against the backend; not yet run as root with real iptables. |
-| `web-dashboard/` | P0 screens. Works in `live` mode against the backend through the Next.js rewrites (sign-in, rules, live `/ws/dashboard` events). A new tab requires sign-in after the last dashboard tab closes; reloading the same tab keeps the session. Field names are checked by `ApiContractTest`. |
+| `web-dashboard/` | Separate admin and employee workspaces after one sign-in. **Admins:** security overview, threat monitoring, email, messaging and endpoint security (with a per-host page showing the enforced block set), code security with a repository inventory, rules and policies, consumer reports, reports, an append-only audit log with record detail, and settings for integrations, the organization and users and roles (add members with a temporary password, change roles, remove). **Employees:** their own overview, threat events, email, messages, reports and settings; admin pages show a notice. Built from the Figma redesign, leaving out the screens nothing backs (binary analysis, investigations, PR review). Works in `live` mode against the backend through the Next.js rewrites; field names are checked by `ApiContractTest`. |
 | Code Guard [P1] | Done: GitHub App webhook (HMAC-verified), gitleaks + OSV-Scanner on push and pull request with a Check Run, release assets → VirusTotal, the dashboard Code Guard page. Tested against a fake GitHub with stand-in scanners; needs a real GitHub App, the public tunnel and gitleaks + osv-scanner installed. |
 | `mobile-android/` (B2C) | The consumer app, on its own API (`/api/b2c/v1`): sign-up with name, email and password verified by an emailed code (or Google), a required app lock (fingerprint when the phone has one, PIN always), and four tabs: **Home** (protection checklist, link and file checks, server and database status, alerts bell), **Activity** (grouped by threat, status or score, with a report panel), **Firewall** (a DNS-only local VPN with blacklist/whitelist and an outgoing/incoming request log) and **Settings** (default browser defense, notification auditor, lock, server address, six themes, account). Checked end to end on the Android 17 emulator; Google sign-in, real SMTP and physical devices are still open in [`TODO.md`](TODO.md). |
 | `backend-spring/` B2C | Done: `/api/b2c/v1` on its own stateless filter chain with `obc_` tokens and separate `consumers`, email codes over SMTP, Google ID token sign-in, scans with personal → shared → VirusTotal precedence, Activity, personal rules, the phone firewall's blocklist, and consumer reports that become global blocks when VirusTotal flags them, 3 verified consumers report them, or an admin approves them (never for a protected domain). The dashboard's **Consumer Reports** page is the admin queue. |
 
-Tests: backend 270/270 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`), Android 24/24 (`./gradlew testDebugUnitTest`).
+Tests: backend 278/278 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`), Android 24/24 (`./gradlew testDebugUnitTest`).
 
 ### What is next
 
@@ -532,6 +532,9 @@ The web app and the API share one origin. `/api`, `/ws`, `/webauthn`, `/login/we
 | `WS /ws/dashboard` | Live feed for the SOC dashboard |
 | `POST /api/v1/webhooks/github` | Code Guard webhook (signature-verified): push, pull request, release |
 | `GET /api/v1/code/findings` | List Code Guard findings for the organization |
+| `/api/v1/org`, `/api/v1/org/members` | Organization settings and members (admins) |
+| `GET /api/v1/audit` | Read-only audit log (admins) |
+| `GET /api/v1/reports/summary` | Scan verdicts by day and source |
 | `GET /api/v1/consumer-reports` | Admin queue of B2C reports waiting for approval |
 | `/api/b2c/v1/*` | The Android app's own API: sign-up, scans, Activity, rules, the firewall blocklist, reports |
 | `POST /api/v1/code/findings/{id}/status` | Mark a finding as rotated or a false positive |

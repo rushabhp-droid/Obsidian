@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -203,6 +204,11 @@ export function AgentsView() {
           ) : (
             <p className="text-[12px] text-subtle">Register an agent to see its details.</p>
           )}
+          {selected ? (
+            <Link href={`/agents/${selected.id}`} className="w-fit text-[12px] leading-[1.4] text-interactive hover:underline">
+              Open {selected.hostname} → enforced rules and activity
+            </Link>
+          ) : null}
         </Panel>
         <Panel className="flex-1">
           <PanelTitle>What connected means</PanelTitle>

@@ -13,6 +13,8 @@ import org.springframework.data.repository.Repository;
 /** Reads only. RuleService writes threat_rules with native upserts. */
 public interface ThreatRuleRepository extends Repository<ThreatRule, UUID> {
 
+    java.util.Optional<ThreatRule> findById(UUID id);
+
     /** Every rule that could apply to this user for one indicator; RulePrecedence picks the winner. */
     @Query("""
             select r from ThreatRule r

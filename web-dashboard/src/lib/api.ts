@@ -3,15 +3,24 @@
 // __Host-session cookie rides along. Until Spring is up, NEXT_PUBLIC_API_MODE
 // defaults to "mock" and every call is served by mock-store.ts.
 
+import { ApiError } from "./api-error";
 import { mockApi } from "./mock-store";
 import type {
   BypassRequest,
   CodeFinding,
+  AddMemberRequest,
+  AgentDetail,
+  AuditDetail,
+  AuditEntry,
   ConsumerReportQueueItem,
   EndpointAgent,
   GmailConnection,
   IndicatorType,
+  Member,
+  OrgSettings,
   RegisteredAgent,
+  ReportSummary,
+  Role,
   ReportRequest,
   ScanLog,
   ScannedEmail,
@@ -22,14 +31,7 @@ import type {
 export const API_MODE: "live" | "mock" =
   process.env.NEXT_PUBLIC_API_MODE === "live" ? "live" : "mock";
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ApiError } from "./api-error";
 
 // Spring's CookieCsrfTokenRepository convention; harmless when the cookie is absent.
 export function csrfHeaders(): Record<string, string> {
@@ -76,6 +78,7 @@ const post = <T>(path: string, body?: unknown, headers?: HeadersInit) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body), headers });
 
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
+const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", body: JSON.stringify(body) });
 
 const live = {
   // Auth and rule mutation requests follow docs/protocol.md.
@@ -109,6 +112,21 @@ const live = {
   listProtectedDomains: () => get<string[]>("/api/v1/protected-domains"),
   addProtectedDomain: (domain: string) => post<string[]>("/api/v1/protected-domains", { domain }),
   removeProtectedDomain: (domain: string) => del<void>(`/api/v1/protected-domains/${encodeURIComponent(domain)}`),
+
+  // Organization admins: settings, members, audit log, endpoint detail.
+  orgSettings: () => get<OrgSettings>("/api/v1/org"),
+  updateOrg: (update: { name?: string; policyAllowUserBypass?: boolean }) => put<OrgSettings>("/api/v1/org", update),
+  listMembers: () => get<Member[]>("/api/v1/org/members"),
+  addMember: (req: AddMemberRequest) => post<Member>("/api/v1/org/members", req),
+  setMemberRole: (id: string, role: Exclude<Role, "CONSUMER">) =>
+    put<Member>(`/api/v1/org/members/${encodeURIComponent(id)}/role`, { role }),
+  removeMember: (id: string) => del<void>(`/api/v1/org/members/${encodeURIComponent(id)}`),
+  listAudit: (limit = 200) => get<AuditEntry[]>(`/api/v1/audit?limit=${limit}`),
+  auditDetail: (id: string) => get<AuditDetail>(`/api/v1/audit/${encodeURIComponent(id)}`),
+  agentDetail: (id: string) => get<AgentDetail>(`/api/v1/agents/${encodeURIComponent(id)}`),
+
+  // Everyone: their organization's (admins) or their own (employees) scan totals.
+  reportSummary: (days: number) => get<ReportSummary>(`/api/v1/reports/summary?days=${days}`),
 };
 
 export const api: typeof live = API_MODE === "live" ? live : mockApi;

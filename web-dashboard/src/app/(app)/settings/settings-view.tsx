@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SettingsTabs } from "@/components/obsidian/settings-tabs";
 import { ContextNotice, MetaList, PageFootnote, PageHeading, Panel, PanelTitle } from "@/components/obsidian/panel";
 import { ErrorNotice, LoadingRows, TablePanel } from "@/components/obsidian/table-panel";
 import { useLive, useNow } from "@/components/shell/live-provider";
@@ -51,6 +52,7 @@ export function SettingsView() {
   return (
     <>
       <PageHeading title="Integration settings" subtitle="Connectivity, last sync and what each integration does are shown separately" />
+      <SettingsTabs />
 
       {gmail.data && agents ? (
         issues.length > 0 ? (
@@ -135,9 +137,13 @@ export function SettingsView() {
                 <TableCell>{latestHeartbeat ? relativeTime(latestHeartbeat, now) : agents ? "Never / not available" : "Unknown"}</TableCell>
                 <TableCell>Heartbeat, iptables and /etc/hosts enforcement</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/agents">Manage agents</Link>
-                  </Button>
+                  {session?.role === "ADMIN" ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href="/agents">Manage agents</Link>
+                    </Button>
+                  ) : (
+                    "Managed by your admin"
+                  )}
                 </TableCell>
               </TableRow>
               <TableRow>

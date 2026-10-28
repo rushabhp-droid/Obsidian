@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ObsidianIdentity } from "@/components/obsidian/identity";
 import { API_MODE } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { navGroups, overviewItem, type NavItem } from "./nav";
+import { navFor, type NavItem } from "./nav";
 import { useLive } from "./live-provider";
 
 const roleLabel = { ADMIN: "Organization admin", EMPLOYEE: "Employee", CONSUMER: "Personal account" } as const;
@@ -13,6 +13,7 @@ const roleLabel = { ADMIN: "Organization admin", EMPLOYEE: "Employee", CONSUMER:
 export function AppSidebar() {
   const pathname = usePathname();
   const { session } = useLive();
+  const nav = navFor(session?.role);
 
   return (
     <div className="w-[218px] shrink-0 self-stretch bg-sidebar">
@@ -32,8 +33,8 @@ export function AppSidebar() {
         </div>
 
         <nav aria-label="Primary" className="text-[12px] text-sidebar-foreground">
-          <NavLink item={overviewItem} pathname={pathname} />
-          {navGroups.map((group) => (
+          {session ? <NavLink item={nav.overview} pathname={pathname} /> : null}
+          {(session ? nav.groups : []).map((group) => (
             <div key={group.label} className="mt-10">
               <p className="flex h-10 items-center">{group.label}</p>
               <ul>

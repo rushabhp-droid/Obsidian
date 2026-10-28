@@ -4,20 +4,30 @@
 // (.example) and addresses (TEST-NET) are illustrative.
 
 import type {
+  AddMemberRequest,
+  AgentDetail,
+  AuditDetail,
+  AuditEntry,
   BypassRequest,
+  Channel,
   CodeFinding,
   ConsumerReportQueueItem,
   DashboardEvent,
   EndpointAgent,
   GmailConnection,
   IndicatorType,
+  Member,
+  OrgSettings,
   RegisteredAgent,
+  ReportCounts,
+  ReportSummary,
   ReportRequest,
   ScanLog,
   ScannedEmail,
   SessionInfo,
   ThreatRule,
 } from "./types";
+import { ApiError } from "./api-error";
 import { clearMockSignedOut, markMockSignedOut } from "./dashboard-tab-session";
 
 const ORG_ID = "6f1c2a4e-0b7d-4c55-9a51-2d8e5b3c9f10";
@@ -28,12 +38,24 @@ const ago = (minutes: number) => new Date(start - minutes * 60_000).toISOString(
 const inMinutes = (minutes: number) => new Date(start + minutes * 60_000).toISOString();
 const id = () => crypto.randomUUID();
 
-const session: SessionInfo = {
+const adminSession: SessionInfo = {
   email: "avery.lin@aster.example",
   displayName: "Avery Lin",
   role: "ADMIN",
   organization: { id: ORG_ID, name: "Aster Research", policyAllowUserBypass: true },
 };
+const employeeSession: SessionInfo = {
+  email: "priya.nair@aster.example",
+  displayName: "Priya Nair",
+  role: "EMPLOYEE",
+  organization: { id: ORG_ID, name: "Aster Research", policyAllowUserBypass: true },
+};
+// Sample-data sign-in: an email starting with "priya" opens the employee workspace, anything else the admin's.
+const MOCK_ROLE_KEY = "obsidian.mock-role";
+function mockSession(): SessionInfo {
+  const employee = typeof window !== "undefined" && window.sessionStorage.getItem(MOCK_ROLE_KEY) === "EMPLOYEE";
+  return employee ? employeeSession : adminSession;
+}
 
 let rules: ThreatRule[] = [
   {
@@ -347,15 +369,79 @@ let consumerReports: ConsumerReportQueueItem[] = [
 
 let protectedDomains: string[] = ["aster.example"];
 
+let org: OrgSettings = {
+  id: ORG_ID,
+  name: "Aster Research",
+  policyAllowUserBypass: true,
+  memberCount: 3,
+  adminCount: 1,
+  createdAt: ago(60 * 24 * 30),
+};
+
+let members: Member[] = [
+  { id: USER_ID, email: "avery.lin@aster.example", displayName: "Avery Lin", role: "ADMIN", passkeys: 1, gmailConnected: true, you: true, createdAt: ago(60 * 24 * 30) },
+  { id: "c3f5e7a9-2b4d-4f6a-9b0c-1d2e3f4a5b6c", email: "priya.nair@aster.example", displayName: "Priya Nair", role: "EMPLOYEE", passkeys: 0, gmailConnected: false, you: false, createdAt: ago(60 * 24 * 20) },
+  { id: "d4a6f8b0-3c5e-4a7b-8c1d-2e3f4a5b6c7d", email: "jules.park@aster.example", displayName: "Jules Park", role: "EMPLOYEE", passkeys: 0, gmailConnected: false, you: false, createdAt: ago(60 * 24 * 2) },
+];
+
+const avery = { id: USER_ID, email: "avery.lin@aster.example", displayName: "Avery Lin" };
+const audit: AuditEntry[] = [
+  { id: "ad000004-0000-4000-8000-000000000004", action: "BYPASS", actor: avery, orgId: ORG_ID, ruleId: "4a0e5c7f-31d2-4b8e-9f60-1c2d3e4f5a03", details: { indicatorType: "DOMAIN", indicatorValue: "status.aster.example", listType: "WHITELIST", previousListType: null, source: "ADMIN_POLICY", scope: "ORGANIZATION" }, createdAt: ago(12) },
+  { id: "ad000003-0000-4000-8000-000000000003", action: "CONSUMER_REPORT", actor: null, orgId: null, ruleId: "4a0e5c7f-31d2-4b8e-9f60-1c2d3e4f5a01", details: { indicatorType: "DOMAIN", indicatorValue: "testsafebrowsing.appspot.com", listType: "BLACKLIST", source: "USER_REPORT", scope: "GLOBAL", promotedBy: "REPORTERS", reporters: 3 }, createdAt: ago(18) },
+  { id: "ad000002-0000-4000-8000-000000000002", action: "MEMBER_ADD", actor: avery, orgId: ORG_ID, ruleId: null, details: { memberEmail: "jules.park@aster.example", role: "EMPLOYEE" }, createdAt: ago(60 * 24 * 2) },
+  { id: "ad000001-0000-4000-8000-000000000001", action: "REPORT", actor: { id: "c3f5e7a9-2b4d-4f6a-9b0c-1d2e3f4a5b6c", email: "priya.nair@aster.example", displayName: "Priya Nair" }, orgId: ORG_ID, ruleId: "4a0e5c7f-31d2-4b8e-9f60-1c2d3e4f5a02", details: { indicatorType: "URL", indicatorValue: "http://login-verify.aster-payroll.example/reset", listType: "BLACKLIST", previousListType: null, source: "USER_REPORT", scope: "ORGANIZATION" }, createdAt: ago(64) },
+];
+
+function mockSummary(days: number): ReportSummary {
+  const zero = (): ReportCounts => ({ total: 0, malicious: 0, suspicious: 0, pending: 0, clean: 0, bypassed: 0 });
+  const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").getTime();
+  const byDay = Array.from({ length: days }, (_, i) => ({
+    date: new Date(today - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10),
+    counts: zero(),
+  }));
+  const bySource = new Map<string, ReportCounts>();
+  const totals = zero();
+  const key: Record<ScanLog["verdict"], keyof ReportCounts> = {
+    MALICIOUS: "malicious", SUSPICIOUS: "suspicious", PENDING: "pending", CLEAN: "clean", BYPASSED: "bypassed",
+  };
+  for (const scan of scans) {
+    const day = byDay.find((d) => d.date === scan.createdAt.slice(0, 10));
+    if (!day) continue;
+    const source = bySource.get(scan.channel) ?? zero();
+    for (const counts of [day.counts, source, totals]) {
+      counts.total += 1;
+      counts[key[scan.verdict]] += 1;
+    }
+    bySource.set(scan.channel, source);
+  }
+  return {
+    days,
+    from: byDay[0].date + "T00:00:00Z",
+    to: new Date().toISOString(),
+    scope: mockSession().role === "ADMIN" ? "ORGANIZATION" : "USER",
+    totals,
+    byDay,
+    bySource: [...bySource].map(([channel, counts]) => ({ channel: channel as Channel, counts })),
+    rules: {
+      blacklist: rules.filter((r) => r.listType === "BLACKLIST").length,
+      whitelist: rules.filter((r) => r.listType === "WHITELIST").length,
+      organization: rules.filter((r) => r.orgId && !r.userId).length,
+      global: rules.filter((r) => !r.orgId && !r.userId).length,
+      personal: rules.filter((r) => r.userId).length,
+    },
+  };
+}
+
 // ---- API surface ---------------------------------------------------------------
 
 const delay = <T,>(value: T, ms = 250) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(structuredClone(value)), ms));
 
 export const mockApi = {
-  session: () => delay(session),
-  login: () => {
+  session: () => delay(mockSession()),
+  login: (email?: string) => {
     clearMockSignedOut();
+    window.sessionStorage.setItem(MOCK_ROLE_KEY, email?.trim().toLowerCase().startsWith("priya") ? "EMPLOYEE" : "ADMIN");
     return delay(undefined, 400);
   },
   logout: () => {
@@ -419,6 +505,52 @@ export const mockApi = {
     protectedDomains = protectedDomains.filter((d) => d !== domain);
     return delay(undefined);
   },
+
+  orgSettings: () => delay(org),
+  updateOrg(update: { name?: string; policyAllowUserBypass?: boolean }) {
+    org = { ...org, ...update, name: update.name?.trim() || org.name };
+    return delay(org);
+  },
+  listMembers: () => delay(members),
+  addMember(req: AddMemberRequest): Promise<Member> {
+    const member: Member = {
+      id: id(), email: req.email.trim().toLowerCase(), displayName: req.displayName.trim() || req.email.split("@")[0],
+      role: req.role, passkeys: 0, gmailConnected: false, you: false, createdAt: new Date().toISOString(),
+    };
+    members = [...members, member];
+    org = { ...org, memberCount: members.length };
+    return delay(member);
+  },
+  setMemberRole(memberId: string, role: Member["role"]) {
+    members = members.map((m) => (m.id === memberId ? { ...m, role } : m));
+    return delay(members.find((m) => m.id === memberId)!);
+  },
+  removeMember(memberId: string) {
+    members = members.filter((m) => m.id !== memberId);
+    org = { ...org, memberCount: members.length };
+    return delay(undefined);
+  },
+  listAudit: () => delay(audit),
+  auditDetail(auditId: string): Promise<AuditDetail> {
+    const entry = audit.find((a) => a.id === auditId);
+    if (!entry) return Promise.reject(new ApiError(404, "No such audit record."));
+    return delay({
+      entry,
+      rule: rules.find((r) => r.id === entry.ruleId) ?? null,
+      ruleHistory: audit.filter((a) => entry.ruleId && a.ruleId === entry.ruleId).reverse(),
+    });
+  },
+  agentDetail(agentId: string): Promise<AgentDetail> {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return Promise.reject(new ApiError(404, "No such agent in your organization."));
+    return delay({
+      agent,
+      enforced: rules
+        .filter((r) => r.listType === "BLACKLIST" && !r.userId && (r.indicatorType === "DOMAIN" || r.indicatorType === "IP"))
+        .map((r) => ({ ruleId: r.id, indicatorType: r.indicatorType, value: r.indicatorValue })),
+    });
+  },
+  reportSummary: (days: number) => delay(mockSummary(days)),
 
   registerAgent(hostname: string): Promise<RegisteredAgent> {
     const agent: EndpointAgent = { id: id(), hostname, lastHeartbeatAt: null, createdAt: new Date().toISOString() };
