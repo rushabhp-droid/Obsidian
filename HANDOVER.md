@@ -2,7 +2,7 @@
 
 Updated 2026-10-28. This is a short work-resume note, not a specification. For routine tasks, use the relevant source documents directly.
 
-Last code verification: 2026-10-28, after the B2C Android app and `/api/b2c/v1` were added: backend 268/268 and Android 24/24 unit tests passed, the dashboard type-checked and linted, and the Android debug build was run end to end on the Android 17 emulator against `gradle bootTestRun` (the daemon was not re-run).
+Last code verification: 2026-10-28: `scripts/build.sh test` passed (backend 270/270, daemon 19/19, dashboard type-check and lint, Android 24/24). With `scripts/build.sh run`, consumer reports promoted by 3 reporters, by VirusTotal (EICAR) and by dashboard approval reached the dry-run daemon live, and the dashboard's Consumer Reports and Rules pages were checked in a headless browser. The Android app was run end to end on the Android 17 emulator earlier the same day.
 
 ## Where to start
 

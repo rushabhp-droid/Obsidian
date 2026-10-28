@@ -39,7 +39,7 @@ Known limits, by design or Android's: the firewall only sees DNS, so incoming co
 
 ### 3. Verify the report path to the daemon
 
-- [ ] Report a domain from the Android app that VirusTotal flags (or report it from 3 verified accounts, or approve it under **Consumer Reports** in the dashboard), and confirm the daemon from section 1 blocks it. This completes the hour-8 milestone.
+- [ ] Report a domain from the Android app that VirusTotal flags (or report it from 3 verified accounts, or approve it under **Consumer Reports** in the dashboard), and confirm the daemon from section 1 blocks it with real iptables. This completes the hour-8 milestone. Checked on 2026-10-28 with the daemon in `--dry-run`: the third report and an admin approval each reached it live (`BLOCK DOMAIN … applied in 2 ms`).
 
 ### 4. Prepare the demo environment
 

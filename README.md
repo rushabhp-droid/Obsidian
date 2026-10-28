@@ -24,7 +24,7 @@ When someone reports a phishing link from a phone, Obsidian blocks it on every m
 | `mobile-android/` (B2C) | The consumer app, on its own API (`/api/b2c/v1`): sign-up with name, email and password verified by an emailed code (or Google), a required app lock (fingerprint when the phone has one, PIN always), and four tabs: **Home** (protection checklist, link and file checks, server and database status, alerts bell), **Activity** (grouped by threat, status or score, with a report panel), **Firewall** (a DNS-only local VPN with blacklist/whitelist and an outgoing/incoming request log) and **Settings** (default browser defense, notification auditor, lock, server address, six themes, account). Checked end to end on the Android 17 emulator; Google sign-in, real SMTP and physical devices are still open in [`TODO.md`](TODO.md). |
 | `backend-spring/` B2C | Done: `/api/b2c/v1` on its own stateless filter chain with `obc_` tokens and separate `consumers`, email codes over SMTP, Google ID token sign-in, scans with personal → shared → VirusTotal precedence, Activity, personal rules, the phone firewall's blocklist, and consumer reports that become global blocks when VirusTotal flags them, 3 verified consumers report them, or an admin approves them (never for a protected domain). The dashboard's **Consumer Reports** page is the admin queue. |
 
-Tests: backend 268/268 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`), Android 24/24 (`./gradlew testDebugUnitTest`).
+Tests: backend 270/270 (`cd backend-spring && gradle test`, on embedded PostgreSQL 16 and an in-process Redis, so no Docker is needed), daemon 19/19 (`cargo test`), Android 24/24 (`./gradlew testDebugUnitTest`).
 
 ### What is next
 
@@ -457,7 +457,7 @@ What each target does:
 
 | Target | Tests | Build | Needs |
 | --- | --- | --- | --- |
-| `backend` | `gradle test`: 268 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
+| `backend` | `gradle test`: 270 tests on embedded PostgreSQL 16 + in-process Redis | `gradle bootJar` → `dist/obsidian-backend.jar` | JDK 21–25 |
 | `daemon` | `cargo test` | `cargo build --release` → `dist/daemon-rust` | Rust stable |
 | `web` | `npm ci` if needed, `tsc --noEmit`, `eslint` | `next build` → `web-dashboard/.next` | Node.js 20+ |
 | `android` | `./gradlew testDebugUnitTest` | `assembleDebug assembleRelease` → `dist/obsidian-android-debug.apk` and `dist/obsidian-android-release.apk` (or `-release-unsigned.apk` without a signing key) | Android SDK (`ANDROID_HOME`, `local.properties` or `~/Android/Sdk`), JDK 17–23 (found automatically) |

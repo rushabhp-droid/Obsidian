@@ -8,7 +8,9 @@ import com.obsidian.auth.Tokens;
 import com.obsidian.model.EndpointAgent;
 import com.obsidian.model.EndpointAgentRepository;
 import com.obsidian.model.IndicatorType;
+import com.obsidian.model.RuleSource;
 import com.obsidian.model.ThreatCategory;
+import com.obsidian.model.ThreatRule;
 import com.obsidian.rules.RuleService;
 import com.obsidian.support.IntegrationTest;
 import com.obsidian.support.TestAccounts;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 
 /** /ws/firewall as a daemon sees it (docs/protocol.md). */
@@ -33,6 +36,7 @@ class FirewallSocketTest extends IntegrationTest {
     @Autowired RuleService rules;
     @Autowired TestAccounts accounts;
     @Autowired EndpointAgentRepository agents;
+    @Autowired JdbcTemplate jdbc;
 
     Team team;
     String token;
@@ -112,6 +116,29 @@ class FirewallSocketTest extends IntegrationTest {
             daemon.await(frame -> frame.path("value").asText().equals(last));
             assertThat(daemon.frames).extracting(frame -> frame.path("type").asText() + " " + frame.path("value").asText())
                     .containsExactly("SYNC ", "BLOCK " + marker, "BLOCK " + last);
+        }
+    }
+
+    @Test
+    void globalBlocksGoOutLiveUnlessTheOrganizationAllowsThem() throws Exception {
+        String allowed = host("admin-allowed");
+        rules.bypass(team.admin(), IndicatorType.DOMAIN, allowed, null);
+        try (SocketClient daemon = daemon(token)) {
+            daemon.await(frame -> frame.path("type").asText().equals("SYNC"));
+
+            String crowd = host("consumer-crowd");
+            ThreatRule global = rules.blockGlobally(null, IndicatorType.DOMAIN, crowd, ThreatCategory.PHISHING,
+                    RuleSource.USER_REPORT, null);
+            rules.blockGlobally(null, IndicatorType.DOMAIN, allowed, ThreatCategory.PHISHING, RuleSource.USER_REPORT, null);
+            String last = host("last");
+            rules.report(team.admin(), IndicatorType.DOMAIN, last, ThreatCategory.PHISHING);
+
+            daemon.await(frame -> frame.path("value").asText().equals(last));
+            assertThat(daemon.frames).extracting(frame -> frame.path("type").asText() + " " + frame.path("value").asText())
+                    .containsExactly("SYNC ", "BLOCK " + crowd, "BLOCK " + last);
+            assertThat(daemon.frames.get(1).path("ruleId").asText()).isEqualTo(global.getId().toString());
+        } finally {
+            jdbc.update("delete from threat_rules where org_id is null and user_id is null");
         }
     }
 

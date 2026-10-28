@@ -231,7 +231,9 @@ Server → daemon:
 - `SYNC` is sent on every connect. It is the organization's full set of indicators to block right now:
   its org-level and global `IP`/`DOMAIN` rules after precedence. The daemon removes everything it manages
   and applies exactly this set.
-- `BLOCK` and `BYPASS` follow every org-level `IP`/`DOMAIN` change. User-level rules never reach daemons.
+- `BLOCK` and `BYPASS` follow every org-level `IP`/`DOMAIN` change, and every global one (a promoted
+  B2C consumer report). A global change is decided per organization with rule precedence, so an
+  organization whose admin allows the indicator gets no `BLOCK`. User-level rules never reach daemons.
 
 Daemon → server: `{"type":"HEARTBEAT"}` every 10 s. Each one updates `endpoint_agents.last_heartbeat_at`.
 `ACK` (`{"type":"ACK","ruleId":"…","appliedMs":12}`) is [P1]. Both sides ignore types they don't know.

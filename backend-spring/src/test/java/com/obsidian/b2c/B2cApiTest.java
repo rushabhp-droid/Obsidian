@@ -80,6 +80,7 @@ class B2cApiTest extends IntegrationTest {
     @Autowired TestAccounts accounts;
     @Autowired RuleService ruleService;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ConsumerReportService reportService;
     @MockitoBean VirusTotalClient virusTotal;
     @MockitoBean GoogleTokenVerifier google;
 
@@ -351,6 +352,20 @@ class B2cApiTest extends IntegrationTest {
         assertThat(audit.get("action")).isEqualTo("CONSUMER_REPORT");
         assertThat(audit.get("actor_user_id")).isNull();
         assertThat(audit.get("details").toString()).contains("\"promotedBy\": \"VIRUSTOTAL\"", "\"scope\": \"GLOBAL\"");
+    }
+
+    @Test
+    void theRecheckJobBlocksAWaitingReportOnceVirusTotalFlagsIt() throws Exception {
+        String token = consumer();
+        String domain = unique("late-verdict") + ".example";
+        postJson("/api/b2c/v1/reports", domainReport(domain), token).andExpect(jsonPath("$.status").value("WAITING"));
+
+        given(virusTotal.lookupDomain(domain)).willReturn(VtVerdict.fromStats(9, 0, ThreatCategory.MALICIOUS, Instant.now()));
+        reportService.recheckWaiting();
+
+        getWith("/api/b2c/v1/reports", token).andExpect(jsonPath("$[0].status").value("BLOCKED"));
+        assertThat(jdbc.queryForObject("select source from threat_rules where indicator_value = ? and org_id is null",
+                String.class, domain)).isEqualTo("VIRUSTOTAL");
     }
 
     @Test

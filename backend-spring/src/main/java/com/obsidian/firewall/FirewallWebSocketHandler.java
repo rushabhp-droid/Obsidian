@@ -6,14 +6,21 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.obsidian.firewall.EventEnvelope.Kind;
 import com.obsidian.model.EndpointAgent;
 import com.obsidian.model.EndpointAgentRepository;
+import com.obsidian.model.IndicatorType;
+import com.obsidian.model.ListType;
+import com.obsidian.model.ThreatRule;
 import com.obsidian.rules.FirewallRule;
 import com.obsidian.rules.RuleService;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,7 +32,9 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 /**
  * /ws/firewall: SYNC with the organization's full block set on every connect,
- * then BLOCK / BYPASS for each org-level IP or DOMAIN change. HEARTBEAT from
+ * then BLOCK / BYPASS for each org-level or global IP or DOMAIN change. A global
+ * change (a promoted consumer report) is decided per organization, so an admin's
+ * allow still wins over it. HEARTBEAT from
  * the daemon updates endpoint_agents.last_heartbeat_at and reaches dashboards.
  */
 @Component
@@ -82,23 +91,48 @@ public class FirewallWebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session.getId());
     }
 
-    /** Relays a rule change to this organization's daemons; personal rules and other types never go out. */
+    /**
+     * Relays a rule change to the daemons it concerns: an org rule to that organization's, a global rule
+     * to every organization whose own rules don't override it. Personal rules and other types never go out.
+     */
     void deliver(EventEnvelope envelope) {
         JsonNode event = envelope.event();
-        if (envelope.kind() != Kind.RULE || envelope.orgId() == null || envelope.userId() != null
+        if (envelope.kind() != Kind.RULE || envelope.userId() != null
                 || !NETWORK_TYPES.contains(event.path("indicator_type").asText())) {
             return;
         }
-        ObjectNode frame = mapper.createObjectNode().put("type", event.path("type").asText())
-                .put("ruleId", event.path("ruleId").asText())
-                .put("indicator_type", event.path("indicator_type").asText())
-                .put("value", event.path("value").asText());
-        TextMessage message = new TextMessage(frame.toString());
-        for (WebSocketSession session : sessions.values()) {
-            if (envelope.orgId().equals(agent(session).getOrgId())) {
-                send(session, message);
+        String type = event.path("type").asText();
+        String value = event.path("value").asText();
+        if (envelope.orgId() != null) {
+            TextMessage message = frame(type, event.path("ruleId").asText(), event.path("indicator_type").asText(), value);
+            for (WebSocketSession session : sessions.values()) {
+                if (envelope.orgId().equals(agent(session).getOrgId())) {
+                    send(session, message);
+                }
             }
+            return;
         }
+        IndicatorType indicatorType = IndicatorType.valueOf(event.path("indicator_type").asText());
+        Map<UUID, List<WebSocketSession>> byOrganization = sessions.values().stream()
+                .collect(Collectors.groupingBy(session -> agent(session).getOrgId()));
+        byOrganization.forEach((orgId, orgSessions) -> {
+            Optional<ThreatRule> winner = rules.decideForOrganization(orgId, indicatorType, value);
+            TextMessage message;
+            if (winner.isPresent() && winner.get().getListType() == ListType.BLACKLIST) {
+                message = frame("BLOCK", winner.get().getId().toString(), indicatorType.name(), value);
+            } else if ("BYPASS".equals(type)) {
+                message = frame("BYPASS", event.path("ruleId").asText(), indicatorType.name(), value);
+            } else {
+                return; // the organization's own rules allow it: nothing changes for its daemons
+            }
+            orgSessions.forEach(session -> send(session, message));
+        });
+    }
+
+    private TextMessage frame(String type, String ruleId, String indicatorType, String value) {
+        ObjectNode frame = mapper.createObjectNode().put("type", type).put("ruleId", ruleId)
+                .put("indicator_type", indicatorType).put("value", value);
+        return new TextMessage(frame.toString());
     }
 
     private void heartbeat(EndpointAgent agent) {

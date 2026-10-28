@@ -58,7 +58,12 @@ class FirewallVpnService : VpnService() {
     @Volatile private var upstream: InetAddress = InetAddress.getByName(FALLBACK_DNS)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        // Android restarts a sticky service on its own after the process dies: only come back when the
+        // user still wants the firewall and is signed in (a sign-out clears the wish and the rules).
+        val session = AppGraph.session
+        if (intent?.action == ACTION_STOP || !session.settings.value.firewallWanted || !session.isSignedIn) {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(),
+                if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
             stopFirewall()
             return START_NOT_STICKY
         }
@@ -209,7 +214,12 @@ class FirewallVpnService : VpnService() {
                 InetSocketAddress(InetAddress.getByAddress(packet.destination), packet.destinationPort))
         }.getOrNull() ?: return null
         if (uid < 0) return null
-        val pkg = packageManager.getPackagesForUid(uid)?.firstOrNull() ?: return null
+        // Android may report an owner in a managed profile that this app cannot inspect.
+        val pkg = try {
+            packageManager.getPackagesForUid(uid)?.firstOrNull()
+        } catch (_: SecurityException) {
+            return null
+        } ?: return null
         return runCatching {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
         }.getOrDefault(pkg)

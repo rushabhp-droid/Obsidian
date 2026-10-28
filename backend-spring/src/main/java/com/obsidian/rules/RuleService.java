@@ -153,6 +153,16 @@ public class RuleService {
                 Limit.of(VISIBLE_LIMIT));
     }
 
+    /**
+     * The rule that decides one network indicator for an organization's daemons: its org rules and the
+     * global ones, after precedence (an admin's allow beats a global block). Value must be normalized.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ThreatRule> decideForOrganization(UUID orgId, IndicatorType type, String value) {
+        return RulePrecedence.resolve(repository.candidates(type, value, orgId, null),
+                Scope.organization(orgId, true), clock.instant());
+    }
+
     /** What the organization's daemons must block right now: org + global IP/DOMAIN rules after precedence. */
     @Transactional(readOnly = true)
     public List<FirewallRule> firewallBlocks(UUID orgId) {

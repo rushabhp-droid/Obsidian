@@ -267,7 +267,7 @@ build_web() {
   [ "$SKIP_TESTS" = 1 ] || web_test
   web_install
   local site_key; site_key=$(turnstile_site_key)
-  step "web: next build (NEXT_PUBLIC_API_MODE=${NEXT_PUBLIC_API_MODE:-live}, Turnstile ${site_key:+on}${site_key:-off})"
+  step "web: next build (NEXT_PUBLIC_API_MODE=${NEXT_PUBLIC_API_MODE:-live}, Turnstile $([ -n "$site_key" ] && echo on || echo off))"
   (cd "$ROOT/web-dashboard" && NEXT_PUBLIC_API_MODE="${NEXT_PUBLIC_API_MODE:-live}" \
       NEXT_PUBLIC_TURNSTILE_SITE_KEY="$site_key" npm run --silent build)
   web_build_settings > "$ROOT/web-dashboard/.next/obsidian-build-settings"
