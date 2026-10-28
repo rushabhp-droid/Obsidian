@@ -2,6 +2,8 @@ package com.obsidian.b2c;
 
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Component;
 public class GoogleTokenVerifier {
 
     static final String JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
+    private static final Logger log = LoggerFactory.getLogger(GoogleTokenVerifier.class);
     private static final List<String> ISSUERS = List.of("accounts.google.com", "https://accounts.google.com");
 
     /** What we take from a verified ID token. */
@@ -44,6 +47,7 @@ public class GoogleTokenVerifier {
         try {
             jwt = decoder().decode(idToken);
         } catch (JwtException e) {
+            log.warn("Google ID token rejected: {}", e.getMessage()); // e.g. wrong audience or expired; never the token
             throw new B2cException(HttpStatus.UNAUTHORIZED, "INVALID_GOOGLE_TOKEN",
                     "Google sign-in couldn't be verified. Try again.");
         }
