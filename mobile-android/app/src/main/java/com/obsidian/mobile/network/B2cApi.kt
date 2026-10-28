@@ -15,6 +15,8 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 import java.io.IOException
+import java.net.Inet6Address
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 /** /api/b2c/v1: the consumer app's own API. Dashboard (/api/v1) tokens don't work here. */
@@ -93,6 +95,15 @@ class ApiClient(private val session: SessionStore) {
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        // Android's debug network config enables cleartext so a physical phone can reach a LAN server.
+        // Keep that permission local to loopback, private IPv4/IPv6, and mDNS hosts here.
+        .addNetworkInterceptor { chain ->
+            val request = chain.request()
+            if (!request.url.isHttps && !isLocalHttpHost(request.url.host)) {
+                throw IOException("Plain HTTP is allowed only for local servers.")
+            }
+            chain.proceed(request)
+        }
         .addInterceptor { chain ->
             val request = chain.request().newBuilder().header("Accept", "application/json")
             session.token?.let { request.header("Authorization", "Bearer $it") }
@@ -153,4 +164,23 @@ class ApiClient(private val session: SessionStore) {
 /** A failed API call. [status] is null for network failures; [code] is the problem detail's "code". */
 class ApiException(val status: Int?, val code: String?, message: String) : Exception(message) {
     val isUnauthorized: Boolean get() = status == 401
+}
+
+private fun isLocalHttpHost(host: String): Boolean {
+    val normalized = host.trimEnd('.').lowercase()
+    if (normalized == "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local")) return true
+
+    val parts = normalized.split('.')
+    if (parts.size == 4) {
+        val octets = parts.map { it.toIntOrNull() ?: return false }
+        if (octets.any { it !in 0..255 }) return false
+        val (first, second) = octets
+        return first == 10 || first == 127 || (first == 169 && second == 254) ||
+            (first == 172 && second in 16..31) || (first == 192 && second == 168)
+    }
+
+    if (':' !in normalized) return false
+    val address = runCatching { InetAddress.getByName(normalized) as? Inet6Address }.getOrNull() ?: return false
+    val first = address.address[0].toInt() and 0xff
+    return address.isLoopbackAddress || address.isLinkLocalAddress || (first and 0xfe) == 0xfc
 }
